@@ -2,8 +2,9 @@ package downloader
 
 import (
 	"context"
-	"github.com/yinyajiang/yt-mnt/model"
 	"strings"
+
+	"github.com/yinyajiang/yt-mnt/model"
 
 	"log"
 )
@@ -22,15 +23,15 @@ func Regist(d Downloader) {
 	_downloaders[d.Name()] = d
 }
 
-func GetByName(downloader string) Downloader {
-	if downloader == "" {
+func GetByName(name string) Downloader {
+	if name == "" {
 		log.Panic("downloader name is empty")
 		return nil
 	}
-	if d, ok := _downloaders[downloader]; ok {
+	if d, ok := _downloaders[name]; ok {
 		return d
 	}
-	log.Panicf("downloader %s not found", downloader)
+	log.Panicf("downloader %s not found", name)
 	return nil
 }
 
