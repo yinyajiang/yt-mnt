@@ -11,13 +11,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-var (
-	channelRegexp = regexp.MustCompile(`href="https://www.youtube.com/channel/([^"]+)"`)
-)
-
 const (
 	kindChannel = iota + 1
 	kindPlaylist
+	kindPlaylistGroup
 )
 
 func parseYoutubeURL(link string) (kind int, id string, err error) {
@@ -57,27 +54,21 @@ func parseYoutubeURL(link string) (kind int, id string, err error) {
 		return
 	}
 
+	// - https://www.youtube.com/@fxigr1/playlists
+	if strings.HasPrefix(path, "/@") && (strings.HasSuffix(path, "/playlists") || strings.HasSuffix(path, "/playlists/")) {
+		id, err = parseWebpageUserID(parsed.String())
+		if err != nil {
+			return
+		}
+		kind = kindPlaylistGroup
+		return
+	}
+
 	// - https://www.youtube.com/user/fxigr1
 	// - https://www.youtube.com/@fxigr1
 	if strings.HasPrefix(path, "/user") || strings.HasPrefix(path, "/@") {
-		var resp *http.Response
-		resp, err = http.Get(parsed.String())
+		id, err = parseWebpageUserID(parsed.String())
 		if err != nil {
-			err = errors.Wrapf(err, "failed to get user page: %s", parsed.String())
-			return
-		}
-		html, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if i := strings.Index(string(html), `rel="canonical"`); i != -1 {
-			gs := channelRegexp.FindStringSubmatch(string(html[i:]))
-			if len(gs) <= 1 {
-				err = errors.New("failed to parse channel id from user page")
-				return
-			}
-			id = gs[1]
-		} else {
-			err = errors.New("failed to parse channel id from user page, no canonical link found")
 			return
 		}
 		kind = kindChannel
@@ -85,4 +76,27 @@ func parseYoutubeURL(link string) (kind int, id string, err error) {
 	}
 	err = errors.New("unsupported link format")
 	return
+}
+
+var (
+	channelRegexp = regexp.MustCompile(`href="https://www.youtube.com/channel/([^"]+)"`)
+)
+
+func parseWebpageUserID(u string) (string, error) {
+	var resp *http.Response
+	resp, err := http.Get(u)
+	if err != nil {
+		return "", err
+	}
+	html, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if i := strings.Index(string(html), `rel="canonical"`); i != -1 {
+		gs := channelRegexp.FindStringSubmatch(string(html[i:]))
+		if len(gs) <= 1 {
+			return "", errors.New("failed to parse channel id from user page")
+		}
+		return gs[1], nil
+	} else {
+		return "", errors.New("failed to parse channel id from user page, no canonical link found")
+	}
 }

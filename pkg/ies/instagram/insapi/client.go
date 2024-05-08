@@ -2,7 +2,6 @@ package insapi
 
 import (
 	"fmt"
-	"github.com/yinyajiang/yt-mnt/model"
 	"io"
 	"log"
 	"math"
@@ -13,6 +12,8 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
+	"github.com/yinyajiang/yt-mnt/model"
+	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
 
 type InstagramApi struct {
@@ -117,7 +118,7 @@ func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*model
 		leftCount = math.MaxInt64
 	}
 	ret := make([]*model.MediaEntry, 0)
-	nextPage := model.NextPage{}
+	nextPage := ies.NextPage{}
 	for {
 		if leftCount <= 0 || nextPage.IsEnd {
 			break
@@ -137,7 +138,7 @@ func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*model
 	return ret, nil
 }
 
-func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *model.NextPage) ([]*model.MediaEntry, error) {
+func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
 	if nextPage == nil {
 		return i.UserPosts(user_id)
 	}

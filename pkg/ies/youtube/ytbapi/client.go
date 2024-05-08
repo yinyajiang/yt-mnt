@@ -2,6 +2,7 @@ package ytbapi
 
 import (
 	"context"
+
 	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 
@@ -34,8 +35,9 @@ func (c *Client) Channel(chnnelID string) (*model.MediaEntry, error) {
 	}
 	item := response.Items[0]
 	ret := &model.MediaEntry{
-		URL:  "https://www.youtube.com/channel/" + chnnelID,
-		Note: "youtube-channel",
+		URL:       "https://www.youtube.com/channel/" + chnnelID,
+		Note:      "youtube-channel",
+		MediaType: model.MediaTypeUser,
 	}
 	if item.Snippet != nil {
 		ret.Title = item.Snippet.Title
@@ -46,6 +48,9 @@ func (c *Client) Channel(chnnelID string) (*model.MediaEntry, error) {
 	}
 	if item.ContentDetails != nil && item.ContentDetails.RelatedPlaylists != nil {
 		ret.MediaID = item.ContentDetails.RelatedPlaylists.Uploads
+	}
+	if item.Statistics != nil {
+		ret.QueryEntryCount = int64(item.Statistics.VideoCount)
 	}
 	return ret, nil
 }
@@ -70,9 +75,10 @@ func (c *Client) Playlist(playlistID string) (*model.MediaEntry, error) {
 	}
 	item := response.Items[0]
 	ret := &model.MediaEntry{
-		URL:     "https://www.youtube.com/playlist?list=" + playlistID,
-		Note:    "youtube-playlist",
-		MediaID: playlistID,
+		URL:       "https://www.youtube.com/playlist?list=" + playlistID,
+		Note:      "youtube-playlist",
+		MediaID:   playlistID,
+		MediaType: model.MediaTypePlaylist,
 	}
 	if item.Snippet != nil {
 		ret.Title = item.Snippet.Title
@@ -89,24 +95,25 @@ func (c *Client) Playlist(playlistID string) (*model.MediaEntry, error) {
 
 func (c *Client) PlaylistsVideo(playlistID string, latestCount ...int64) ([]*model.MediaEntry, error) {
 	return ies.HelperGetSubItems(playlistID,
-		func(playlistQueryID string, nextPage *model.NextPage) ([]*model.MediaEntry, error) {
-			return c.PlaylistsVideoWithPage(playlistQueryID, nextPage, -1)
+		func(playlistQueryID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+			return c.PlaylistsVideoWithPage(playlistQueryID, nextPage)
 		}, latestCount...)
 }
 
-func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *model.NextPage, maxCount int64) ([]*model.MediaEntry, error) {
+func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
 	if nextPage == nil {
-		return c.PlaylistsVideo(playlistID, maxCount)
+		return c.PlaylistsVideo(playlistID, -1)
 	}
 	if nextPage.IsEnd {
 		return nil, nil
 	}
-	var playlistsVideoPart = []string{"snippet", "contentDetails"}
-	if maxCount > 50 || maxCount <= 0 {
-		maxCount = 50
+	if nextPage.HintPageCount <= 0 {
+		nextPage.HintPageCount = 50
 	}
 
-	call := c.service.PlaylistItems.List(playlistsVideoPart).PlaylistId(playlistID).MaxResults(maxCount)
+	var playlistsVideoPart = []string{"snippet", "contentDetails"}
+
+	call := c.service.PlaylistItems.List(playlistsVideoPart).PlaylistId(playlistID).MaxResults(nextPage.HintPageCount)
 	if nextPage.NextPageID != "" {
 		call = call.PageToken(nextPage.NextPageID)
 	}
@@ -146,21 +153,24 @@ func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *model.NextP
 
 func (c *Client) ChannelsPlaylist(chnnelID string) ([]*model.MediaEntry, error) {
 	return ies.HelperGetSubItems(chnnelID,
-		func(chnnelID string, nextPage *model.NextPage) ([]*model.MediaEntry, error) {
+		func(chnnelID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
 			return c.ChannelsPlaylistWithPage(chnnelID, nextPage)
 		})
 }
 
-func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *model.NextPage) ([]*model.MediaEntry, error) {
+func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
 	if nextPage == nil {
 		return c.ChannelsPlaylist(chnnelID)
 	}
 	if nextPage.IsEnd {
 		return nil, nil
 	}
+	if nextPage.HintPageCount <= 0 {
+		nextPage.HintPageCount = 50
+	}
 
 	var channelsPlaylistPart = []string{"id", "snippet", "contentDetails"}
-	call := c.service.Playlists.List(channelsPlaylistPart).ChannelId(chnnelID).MaxResults(50)
+	call := c.service.Playlists.List(channelsPlaylistPart).ChannelId(chnnelID).MaxResults(nextPage.HintPageCount)
 	if nextPage.NextPageID != "" {
 		call = call.PageToken(nextPage.NextPageID)
 	}
@@ -172,9 +182,10 @@ func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *model.NextP
 	ret := []*model.MediaEntry{}
 	for _, item := range response.Items {
 		playlist := &model.MediaEntry{
-			Note:    "youtube-playlist",
-			MediaID: item.Id,
-			URL:     "https://www.youtube.com/playlist?list=" + item.Id,
+			Note:      "youtube-playlist",
+			MediaID:   item.Id,
+			URL:       "https://www.youtube.com/playlist?list=" + item.Id,
+			MediaType: model.MediaTypePlaylist,
 		}
 		if item.Snippet != nil {
 			playlist.Title = item.Snippet.Title
@@ -182,6 +193,7 @@ func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *model.NextP
 			if item.Snippet.Thumbnails != nil && item.Snippet.Thumbnails.Default != nil {
 				playlist.Thumbnail = item.Snippet.Thumbnails.Default.Url
 			}
+			playlist.UploadDate, _ = parseDate(item.Snippet.PublishedAt)
 		}
 		if item.ContentDetails != nil {
 			playlist.QueryEntryCount = item.ContentDetails.ItemCount

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
-	"github.com/yinyajiang/yt-mnt/service/monitor"
-
+	"fmt"
 	"log"
+
+	"github.com/yinyajiang/yt-mnt/service/monitor"
 )
 
 func main() {
@@ -14,10 +14,16 @@ func main() {
 	// 	log.Fatal(err)
 	// }
 	// log.Println("Subscribed to feed: ", feed.ID)
-	err := m.DownloadEntry(context.Background(), 2, func(total, downloaded, speed int64, percent float64) {
-		log.Println("Downloaded: ", downloaded, "Total: ", total, "Speed: ", speed, "Percent: ", percent)
-	})
+	first, handle, err := m.ExploreFirst("https://www.youtube.com/@huber0203")
 	if err != nil {
 		log.Fatal(err)
+	}
+	fmt.Println(first.Entries)
+	for !handle.IsEnd() {
+		next, err := m.ExploreNext(handle)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(next.Entries)
 	}
 }

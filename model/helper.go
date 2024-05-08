@@ -42,10 +42,7 @@ func (m *MediaEntryList) Scan(value interface{}) error {
 }
 
 func (m *MediaEntry) SetNew(isnew bool) {
-	m.IsNew = isnew
-	for _, sub := range m.Entries {
-		sub.IsNew = isnew
-	}
+	setNew(m, isnew)
 }
 
 func (m *MediaEntry) HasNew() bool {
@@ -58,4 +55,11 @@ func (m *MediaEntry) HasNew() bool {
 		}
 	}
 	return false
+}
+
+func setNew(m *MediaEntry, isnew bool) {
+	m.IsNew = isnew
+	for _, sub := range m.Entries {
+		setNew(sub, isnew)
+	}
 }

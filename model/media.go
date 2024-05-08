@@ -21,12 +21,14 @@ const (
 	MediaTypeCarousel
 
 	MediaTypeUser
+	MediaTypePlaylistGroup
 	MediaTypePlaylist
 )
 
 /* 可以是单个视频，也可以是playlist */
 type MediaEntry struct {
 	MediaType int
+	LinkID    string
 	MediaID   string
 
 	Title       string
@@ -43,9 +45,4 @@ type MediaEntry struct {
 	Entries         MediaEntryList `gorm:"type:json"`
 
 	IsNew bool `json:"-" gorm:"-"`
-}
-
-type NextPage struct {
-	NextPageID string
-	IsEnd      bool
 }

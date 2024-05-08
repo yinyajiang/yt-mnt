@@ -2,12 +2,26 @@ package ies
 
 import (
 	"errors"
+
 	"github.com/yinyajiang/yt-mnt/model"
 )
 
+type LinkInfo struct {
+	LinkID    string
+	MediaID   string
+	MediaType int
+}
+
+type NextPage struct {
+	NextPageID    string
+	HintPageCount int64
+	IsEnd         bool
+}
+
 type InfoExtractor interface {
-	Extract(url string) (*model.MediaEntry, error)
-	Update(update *model.MediaEntry) error
+	Parse(link string) (*model.MediaEntry, error)
+	ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*model.MediaEntry, error)
+	UpdateMedia(update *model.MediaEntry) error
 	IsMatched(url string) bool
 	Name() string
 }
@@ -17,7 +31,10 @@ var (
 )
 
 func Regist(ie InfoExtractor) {
-	_ies[ie.Name()] = ie
+	_ies[ie.Name()] = &cacheInfoExtractor{
+		ie:    ie,
+		cache: make([]cacheInfo, 0),
+	}
 }
 
 func GetIE(hints ...string) (InfoExtractor, error) {

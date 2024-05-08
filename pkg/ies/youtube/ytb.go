@@ -2,11 +2,12 @@ package youtube
 
 import (
 	"errors"
+	"log"
+	"strings"
+
 	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 	"github.com/yinyajiang/yt-mnt/pkg/ies/youtube/ytbapi"
-	"log"
-	"strings"
 )
 
 type YoutubeIE struct {
@@ -40,7 +41,7 @@ func (y *YoutubeIE) IsMatched(link string) bool {
 	return strings.Contains(link, "youtube.com")
 }
 
-func (y *YoutubeIE) Extract(link string) (*model.MediaEntry, error) {
+func (y *YoutubeIE) Parse(link string) (*model.MediaEntry, error) {
 	linkkind, linkid, err := parseYoutubeURL(link)
 	if err != nil {
 		return nil, err
@@ -50,39 +51,51 @@ func (y *YoutubeIE) Extract(link string) (*model.MediaEntry, error) {
 	switch linkkind {
 	case kindChannel:
 		entry, err = y.client.Channel(linkid)
-		entry.MediaType = model.MediaTypeUser
+		if err == nil {
+			entry.MediaType = model.MediaTypeUser
+		}
 	case kindPlaylist:
 		entry, err = y.client.Playlist(linkid)
-		entry.MediaType = model.MediaTypePlaylist
+		if err == nil {
+			entry.MediaType = model.MediaTypePlaylist
+		}
+		if err == nil {
+			entry.MediaType = model.MediaTypePlaylistGroup
+		}
+	case kindPlaylistGroup:
+		entry, err = y.client.Channel(linkid)
+		if err == nil {
+			entry.MediaType = model.MediaTypePlaylistGroup
+		}
 	default:
 		return nil, errors.New("unsupported url type")
 	}
 	if err != nil {
 		return nil, err
 	}
-	if len(entry.Entries) == 0 {
-		videos, err := y.client.PlaylistsVideo(entry.MediaID)
-		if err != nil {
-			return nil, err
-		}
-		for _, video := range videos {
-			video.SetNew(true)
-		}
-		entry.Entries = videos
-	}
-	if entry.QueryEntryCount == 0 && len(entry.Entries) > 0 {
-		entry.QueryEntryCount = int64(len(entry.Entries))
-	}
-	entry.SetNew(true)
+	entry.LinkID = linkid
 	return entry, nil
 }
 
-func (y *YoutubeIE) Update(entry *model.MediaEntry) error {
+func (y *YoutubeIE) ExtractPage(linkInfo ies.LinkInfo, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+	switch linkInfo.MediaType {
+	case model.MediaTypePlaylistGroup:
+		return y.client.ChannelsPlaylistWithPage(linkInfo.LinkID, nextPage)
+	case model.MediaTypePlaylist, model.MediaTypeUser:
+		return y.client.PlaylistsVideoWithPage(linkInfo.MediaID, nextPage)
+	}
+	return nil, errors.New("unsupported media type")
+}
+
+func (y *YoutubeIE) UpdateMedia(entry *model.MediaEntry) error {
+	if entry.MediaType == model.MediaTypePlaylistGroup {
+		return errors.New("playlist group is not supported for update")
+	}
 	return ies.HelperUpdateSubItems(entry,
-		func(playlistQueryID string) (int64, error) {
-			return y.client.PlaylistsVideoCount(playlistQueryID)
+		func(mediaID string) (int64, error) {
+			return y.client.PlaylistsVideoCount(mediaID)
 		},
-		func(playlistQueryID string, latestCount ...int64) ([]*model.MediaEntry, error) {
-			return y.client.PlaylistsVideo(playlistQueryID, latestCount...)
+		func(mediaID string, latestCount ...int64) ([]*model.MediaEntry, error) {
+			return y.client.PlaylistsVideo(mediaID, latestCount...)
 		})
 }

@@ -1,16 +1,17 @@
 package ies
 
 import (
-	"github.com/yinyajiang/yt-mnt/model"
 	"log"
 	"math"
+
+	"github.com/yinyajiang/yt-mnt/model"
 
 	"github.com/duke-git/lancet/v2/slice"
 )
 
 type GetSubItemCount = func(mediaID string) (int64, error)
 type GetSubItems = func(mediaID string, latestCount ...int64) ([]*model.MediaEntry, error)
-type GetSubItemsWithPage = func(mediaID string, nextPage *model.NextPage) ([]*model.MediaEntry, error)
+type GetSubItemsWithPage = func(mediaID string, nextPage *NextPage) ([]*model.MediaEntry, error)
 
 func HelperUpdateSubItems(entry *model.MediaEntry, getSubItemCount GetSubItemCount, getSubItems GetSubItems) error {
 	curCount, err := getSubItemCount(entry.MediaID)
@@ -21,6 +22,9 @@ func HelperUpdateSubItems(entry *model.MediaEntry, getSubItemCount GetSubItemCou
 		return nil
 	}
 	latestCount := curCount - entry.QueryEntryCount
+	if entry.QueryEntryCount == 0 {
+		latestCount = math.MaxInt64
+	}
 	items, err := getSubItems(entry.MediaID, latestCount)
 	if err != nil {
 		return err
@@ -47,7 +51,7 @@ func HelperGetSubItems(mediaID string, getSubItemsWithPageID GetSubItemsWithPage
 		leftCount = math.MaxInt64
 	}
 	ret := make([]*model.MediaEntry, 0)
-	nextPage := model.NextPage{}
+	nextPage := NextPage{}
 	for {
 		if leftCount <= 0 || nextPage.IsEnd {
 			break
@@ -65,4 +69,12 @@ func HelperGetSubItems(mediaID string, getSubItemsWithPageID GetSubItemsWithPage
 		ret = append(ret, medias...)
 	}
 	return ret, nil
+}
+
+func ToLinkInfo(m *model.MediaEntry) LinkInfo {
+	return LinkInfo{
+		LinkID:    m.LinkID,
+		MediaID:   m.MediaID,
+		MediaType: m.MediaType,
+	}
 }
