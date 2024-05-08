@@ -37,7 +37,7 @@ func (i *InstagramIE) IsMatched(link string) bool {
 	return strings.Contains(link, "instagram.com")
 }
 
-func (i *InstagramIE) Parse(link string) (*model.MediaEntry, error) {
+func (i *InstagramIE) Parse(link string, _ ...ies.ParseOptions) (*model.MediaEntry, error) {
 	kind, usr, err := parseInstagramURL(link)
 	if err != nil {
 		return nil, err

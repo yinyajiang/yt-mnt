@@ -93,12 +93,12 @@ func (m *Monitor) Subscribe(url string) (*model.Feed, error) {
 	return feed, nil
 }
 
-func (m *Monitor) ExploreFirst(url string) (*model.MediaEntry, *ExploreHandle, error) {
+func (m *Monitor) ExploreFirst(url string, opt ...ies.ParseOptions) (*model.MediaEntry, *ExploreHandle, error) {
 	ie, err := ies.GetIE(url)
 	if err != nil {
 		return nil, nil, err
 	}
-	info, err := ie.Parse(url)
+	info, err := ie.Parse(url, opt...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -110,7 +110,7 @@ func (m *Monitor) ExploreFirst(url string) (*model.MediaEntry, *ExploreHandle, e
 	if err != nil {
 		return nil, nil, err
 	}
-	handle.CurrentCount += int64(len(subs))
+	handle.BeforeCount += int64(len(subs))
 
 	info.Entries = subs
 	return info, &handle, nil
@@ -131,7 +131,7 @@ func (m *Monitor) ExploreNext(handle *ExploreHandle) (*model.MediaEntry, error) 
 	if err != nil {
 		return nil, err
 	}
-	handle.CurrentCount += int64(len(subs))
+	handle.BeforeCount += int64(len(subs))
 
 	info.Entries = subs
 	return info, nil

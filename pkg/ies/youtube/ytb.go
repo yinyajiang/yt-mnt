@@ -41,11 +41,12 @@ func (y *YoutubeIE) IsMatched(link string) bool {
 	return strings.Contains(link, "youtube.com")
 }
 
-func (y *YoutubeIE) Parse(link string) (*model.MediaEntry, error) {
+func (y *YoutubeIE) Parse(link string, options ...ies.ParseOptions) (*model.MediaEntry, error) {
 	linkkind, linkid, err := parseYoutubeURL(link)
 	if err != nil {
 		return nil, err
 	}
+	opt := ies.Options(options)
 
 	var entry *model.MediaEntry
 	switch linkkind {
@@ -65,7 +66,11 @@ func (y *YoutubeIE) Parse(link string) (*model.MediaEntry, error) {
 	case kindPlaylistGroup:
 		entry, err = y.client.Channel(linkid)
 		if err == nil {
+			entry.QueryEntryCount = 0
 			entry.MediaType = model.MediaTypePlaylistGroup
+			if opt.MustCount {
+				entry.QueryEntryCount, _ = y.client.ChannelsPlaylistCount(linkid)
+			}
 		}
 	default:
 		return nil, errors.New("unsupported url type")

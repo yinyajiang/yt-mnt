@@ -2,6 +2,7 @@ package ytbapi
 
 import (
 	"context"
+	"errors"
 
 	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
@@ -156,6 +157,20 @@ func (c *Client) ChannelsPlaylist(chnnelID string) ([]*model.MediaEntry, error) 
 		func(chnnelID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
 			return c.ChannelsPlaylistWithPage(chnnelID, nextPage)
 		})
+}
+
+func (c *Client) ChannelsPlaylistCount(chnnelID string) (int64, error) {
+	var channelsPlaylistPart = []string{"id", "snippet", "contentDetails"}
+	call := c.service.Playlists.List(channelsPlaylistPart).ChannelId(chnnelID).MaxResults(1)
+	response, err := call.Do()
+	if err != nil {
+		return 0, err
+	}
+	if response.PageInfo == nil {
+		return 0, errors.New("no page info")
+	}
+	count := int64(response.PageInfo.TotalResults)
+	return count, nil
 }
 
 func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {

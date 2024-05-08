@@ -6,11 +6,11 @@ import (
 )
 
 type ExploreHandle struct {
-	ie           string
-	first        model.MediaEntry
-	nextPage     ies.NextPage
-	linkInfo     ies.LinkInfo
-	CurrentCount int64
+	ie          string
+	first       model.MediaEntry
+	nextPage    ies.NextPage
+	linkInfo    ies.LinkInfo
+	BeforeCount int64
 }
 
 func (e *ExploreHandle) IsValid() bool {

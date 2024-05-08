@@ -78,3 +78,12 @@ func ToLinkInfo(m *model.MediaEntry) LinkInfo {
 		MediaType: m.MediaType,
 	}
 }
+
+func Options(options []ParseOptions) ParseOptions {
+	if len(options) == 0 {
+		return ParseOptions{
+			MustCount: true,
+		}
+	}
+	return options[0]
+}

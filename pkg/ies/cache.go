@@ -17,7 +17,7 @@ type cacheInfoExtractor struct {
 	cache []cacheInfo
 }
 
-func (c *cacheInfoExtractor) Parse(link string) (*model.MediaEntry, error) {
+func (c *cacheInfoExtractor) Parse(link string, options ...ParseOptions) (*model.MediaEntry, error) {
 	isMatchedCache := func(cache cacheInfo) bool {
 		if cache.url == link && time.Since(cache.timeStamp) < time.Minute*5 {
 			return true
@@ -42,7 +42,7 @@ func (c *cacheInfoExtractor) Parse(link string) (*model.MediaEntry, error) {
 		}
 	}
 
-	media, err := c.ie.Parse(link)
+	media, err := c.ie.Parse(link, options...)
 	if err == nil {
 		c.cache = append(c.cache, cacheInfo{
 			timeStamp: time.Now(),

@@ -18,8 +18,12 @@ type NextPage struct {
 	IsEnd         bool
 }
 
+type ParseOptions struct {
+	MustCount bool
+}
+
 type InfoExtractor interface {
-	Parse(link string) (*model.MediaEntry, error)
+	Parse(link string, options ...ParseOptions) (*model.MediaEntry, error)
 	ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*model.MediaEntry, error)
 	UpdateMedia(update *model.MediaEntry) error
 	IsMatched(url string) bool
