@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
-	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
 
@@ -21,11 +20,6 @@ type InstagramApi struct {
 	key string
 }
 
-const (
-	NoteStory = "instagram-story"
-	NoteUser  = "instagram-user"
-)
-
 func New(key string) *InstagramApi {
 	return &InstagramApi{
 		h:   http.Client{},
@@ -33,15 +27,15 @@ func New(key string) *InstagramApi {
 	}
 }
 
-func (i *InstagramApi) User(user_name string) (*model.MediaEntry, error) {
+func (i *InstagramApi) User(user_name string) (*ies.MediaEntry, error) {
 	return i.user(user_name, "")
 }
 
-func (i *InstagramApi) UsersStory(user_name string) (*model.MediaEntry, error) {
+func (i *InstagramApi) UsersStory(user_name string) (*ies.MediaEntry, error) {
 	return i.usersStory(user_name, "")
 }
 
-func (i *InstagramApi) usersStory(user_name, or_user_id string) (*model.MediaEntry, error) {
+func (i *InstagramApi) usersStory(user_name, or_user_id string) (*ies.MediaEntry, error) {
 	var js gjson.Result
 	var err error
 	if user_name != "" {
@@ -57,14 +51,13 @@ func (i *InstagramApi) usersStory(user_name, or_user_id string) (*model.MediaEnt
 		return nil, err
 	}
 	reel := js.Get("reel")
-	entry := model.MediaEntry{
-		MediaID:         reel.Get("user.pk_id").String(),
-		Note:            NoteStory,
-		Title:           reel.Get("user.username").String() + " Story",
-		URL:             "https://www.instagram.com/stories/" + reel.Get("user.username").String(),
-		Description:     reel.Get("user.full_name").String(),
-		Thumbnail:       reel.Get("user.profile_pic_url").String(),
-		QueryEntryCount: int64(len(reel.Get("items").Array())),
+	entry := ies.MediaEntry{
+		MediaID:     reel.Get("user.pk_id").String(),
+		Title:       reel.Get("user.username").String() + " Story",
+		URL:         "https://www.instagram.com/stories/" + reel.Get("user.username").String(),
+		Description: reel.Get("user.full_name").String(),
+		Thumbnail:   reel.Get("user.profile_pic_url").String(),
+		EntryCount:  int64(len(reel.Get("items").Array())),
 	}
 	for _, item := range reel.Get("items").Array() {
 		subentry := parseMediaInfo(item)
@@ -73,7 +66,7 @@ func (i *InstagramApi) usersStory(user_name, or_user_id string) (*model.MediaEnt
 	return &entry, nil
 }
 
-func (i *InstagramApi) user(user_name, or_user_id string) (*model.MediaEntry, error) {
+func (i *InstagramApi) user(user_name, or_user_id string) (*ies.MediaEntry, error) {
 	var js gjson.Result
 	var err error
 	if user_name != "" {
@@ -88,15 +81,14 @@ func (i *InstagramApi) user(user_name, or_user_id string) (*model.MediaEntry, er
 	if err != nil {
 		return nil, err
 	}
-	user := model.MediaEntry{
-		MediaID:         js.Get("user.pk_id").String(),
-		Note:            NoteUser,
-		Title:           js.Get("user.username").String(),
-		URL:             "https://www.instagram.com/" + js.Get("user.username").String(),
-		Description:     js.Get("user.biography").String(),
-		Thumbnail:       js.Get("user.profile_pic_url").String(),
-		QueryEntryCount: js.Get("user.media_count").Int(),
-		IsPrivate:       js.Get("user.is_private").Bool(),
+	user := ies.MediaEntry{
+		MediaID:     js.Get("user.pk_id").String(),
+		Title:       js.Get("user.username").String(),
+		URL:         "https://www.instagram.com/" + js.Get("user.username").String(),
+		Description: js.Get("user.biography").String(),
+		Thumbnail:   js.Get("user.profile_pic_url").String(),
+		EntryCount:  js.Get("user.media_count").Int(),
+		IsPrivate:   js.Get("user.is_private").Bool(),
 	}
 	return &user, nil
 }
@@ -106,10 +98,10 @@ func (i *InstagramApi) GetUserPostsCount(user_id string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return usr.QueryEntryCount, nil
+	return usr.EntryCount, nil
 }
 
-func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*model.MediaEntry, error) {
+func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*ies.MediaEntry, error) {
 	leftCount := int64(0)
 	if len(latestCount) > 0 {
 		leftCount = latestCount[0]
@@ -117,7 +109,7 @@ func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*model
 	if leftCount <= 0 {
 		leftCount = math.MaxInt64
 	}
-	ret := make([]*model.MediaEntry, 0)
+	ret := make([]*ies.MediaEntry, 0)
 	nextPage := ies.NextPage{}
 	for {
 		if leftCount <= 0 || nextPage.IsEnd {
@@ -138,7 +130,7 @@ func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*model
 	return ret, nil
 }
 
-func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
 	if nextPage == nil {
 		return i.UserPosts(user_id)
 	}
@@ -155,7 +147,7 @@ func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *ies.NextPage
 		return nil, nil
 	}
 
-	medias := make([]*model.MediaEntry, 0)
+	medias := make([]*ies.MediaEntry, 0)
 	for _, item := range js.Get("response.items").Array() {
 		media := parseMediaInfo(item)
 		medias = append(medias, &media)
@@ -221,9 +213,9 @@ func (i *InstagramApi) newRequest(method, url string, headers map[string]string,
 	return
 }
 
-func parseMediaInfo(item gjson.Result) model.MediaEntry {
+func parseMediaInfo(item gjson.Result) ies.MediaEntry {
 	user := item.Get("user.username").String()
-	media := model.MediaEntry{
+	media := ies.MediaEntry{
 		MediaID:     item.Get("pk").String(),
 		Title:       item.Get("caption.text").String(),
 		Description: item.Get("caption.text").String(),
@@ -248,26 +240,26 @@ func parseMediaInfo(item gjson.Result) model.MediaEntry {
 
 	switch item.Get("media_type").Int() {
 	case 1: //photo
-		media.MediaType = model.MediaTypeImage
+		media.MediaType = ies.MediaTypeImage
 		for _, img := range item.Get("image_versions2.candidates").Array() {
-			media.Formats = append(media.Formats, &model.Format{
+			media.Formats = append(media.Formats, &ies.Format{
 				URL:    img.Get("url").String(),
 				Width:  img.Get("width").Int(),
 				Height: img.Get("height").Int(),
 			})
 		}
 	case 2: //video
-		media.MediaType = model.MediaTypeVideo
+		media.MediaType = ies.MediaTypeVideo
 		media.Duration = int64(item.Get("video_duration").Float())
 		for _, vid := range item.Get("video_versions").Array() {
-			media.Formats = append(media.Formats, &model.Format{
+			media.Formats = append(media.Formats, &ies.Format{
 				URL:    vid.Get("url").String(),
 				Width:  vid.Get("width").Int(),
 				Height: vid.Get("height").Int(),
 			})
 		}
 	case 8: //carousel
-		media.MediaType = model.MediaTypeCarousel
+		media.MediaType = ies.MediaTypeCarousel
 		for _, subitem := range item.Get("carousel_media").Array() {
 			subentry := parseMediaInfo(subitem)
 			media.Entries = append(media.Entries, &subentry)

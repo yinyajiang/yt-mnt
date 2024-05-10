@@ -2,13 +2,11 @@ package ies
 
 import (
 	"time"
-
-	"github.com/yinyajiang/yt-mnt/model"
 )
 
 type cacheInfo struct {
 	timeStamp time.Time
-	media     *model.MediaEntry
+	info      *MediaEntry
 	url       string
 }
 
@@ -17,9 +15,9 @@ type cacheInfoExtractor struct {
 	cache []cacheInfo
 }
 
-func (c *cacheInfoExtractor) Parse(link string, options ...ParseOptions) (*model.MediaEntry, error) {
+func (c *cacheInfoExtractor) Parse(link string, options ...ParseOptions) (*MediaEntry, error) {
 	isMatchedCache := func(cache cacheInfo) bool {
-		if cache.url == link && time.Since(cache.timeStamp) < time.Minute*5 {
+		if cache.url == link && time.Since(cache.timeStamp) < time.Minute*30 {
 			return true
 		}
 		return false
@@ -27,18 +25,7 @@ func (c *cacheInfoExtractor) Parse(link string, options ...ParseOptions) (*model
 
 	for _, cache := range c.cache {
 		if isMatchedCache(cache) {
-			return cache.media, nil
-		}
-		if cache.media.MediaType == model.MediaTypePlaylistGroup {
-			for _, entry := range cache.media.Entries {
-				if isMatchedCache(cacheInfo{
-					timeStamp: cache.timeStamp,
-					media:     entry,
-					url:       link,
-				}) {
-					return entry, nil
-				}
-			}
+			return cache.info, nil
 		}
 	}
 
@@ -46,19 +33,31 @@ func (c *cacheInfoExtractor) Parse(link string, options ...ParseOptions) (*model
 	if err == nil {
 		c.cache = append(c.cache, cacheInfo{
 			timeStamp: time.Now(),
-			media:     media,
+			info:      media,
 			url:       link,
 		})
 	}
 	return media, err
 }
 
-func (c *cacheInfoExtractor) ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*model.MediaEntry, error) {
-	return c.ie.ExtractPage(linkInfo, nextPage)
+func (c *cacheInfoExtractor) ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*MediaEntry, error) {
+	entrys, err := c.ie.ExtractPage(linkInfo, nextPage)
+	if err == nil {
+		for _, entry := range entrys {
+			sortEntryFormats(entry)
+		}
+	}
+	return entrys, err
 }
 
-func (c *cacheInfoExtractor) UpdateMedia(update *model.MediaEntry) error {
-	return c.ie.UpdateMedia(update)
+func (c *cacheInfoExtractor) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*MediaEntry, error) {
+	entrys, err := c.ie.ExtractAllAfterTime(paretnMediaID, afterTime)
+	if err == nil {
+		for _, entry := range entrys {
+			sortEntryFormats(entry)
+		}
+	}
+	return entrys, err
 }
 
 func (c *cacheInfoExtractor) IsMatched(url string) bool {

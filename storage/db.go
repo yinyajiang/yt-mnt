@@ -5,8 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/yinyajiang/yt-mnt/model"
-
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -16,7 +14,7 @@ type DBStorage struct {
 	db *gorm.DB
 }
 
-func NewStorage(dbpath string, verbose bool) (*DBStorage, error) {
+func NewStorage(dbpath string, verbose bool, table ...any) (*DBStorage, error) {
 	loglevel := logger.Error
 	if verbose {
 		loglevel = logger.Info
@@ -34,7 +32,7 @@ func NewStorage(dbpath string, verbose bool) (*DBStorage, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = db.Migrator().AutoMigrate(&model.Feed{}, &model.FeedEntry{})
+	err = db.Migrator().AutoMigrate(table...)
 	if err != nil {
 		return nil, err
 	}

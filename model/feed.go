@@ -1,56 +1,89 @@
 package model
 
 import (
+	"time"
+
+	"github.com/yinyajiang/yt-mnt/pkg/ies"
 	"gorm.io/gorm"
 )
 
 const (
-	FeedEntryStatusNew = iota + 1
-	FeedEntryStatusDownloading
-	FeedEntryStatusFinished
-	FeedEntryStatusFail
+	AssetStatusNew = iota + 1
+	AssetStatusDownloading
+	AssetStatusFinished
+	AssetStatusFail
 )
 
-// 每个Entry是一个可下载项
-type FeedEntry struct {
-	gorm.Model
-	OwnerID uint
-	IE      string
-	Status  int
+const (
+	AssetTypeVideo = iota + 1
+	AssetTypeAudio
+	AssetTypeImage
+)
 
-	DownloadQuality   string
-	DownloaderStaging string
-	DownloadDir       string
-	DownloadFile      string
-	Downloader        string
-	MediaEntry
+// 每个是一个可下载项
+type Assets struct {
+	gorm.Model
+	OwnerFeedID   uint
+	OwnerBundleID uint
+	Type          int
+	Status        int
+
+	Title     string
+	Thumbnail string
+
+	URL            string
+	Quality        string
+	DownloadFormat *ies.Format `gorm:"type:json"`
+
+	Downloader     string
+	DownloaderData string
+	DownloadDir    string
+	DownloadFile   string
+
+	DownloadTotalSize int64
+	DownloadedSize    int64
+	DownloadPercent   float64
 }
 
-func (f *FeedEntry) TableName() string {
-	return "feed_entries"
+func (a *Assets) TableName() string {
+	return "assets"
 }
 
 const (
-	FeedTypeUser     = "user"
-	FeedTypePlaylist = "playlist"
+	FeedUser     = "user"
+	FeedPlaylist = "playlist"
 )
 
 type Feed struct {
 	gorm.Model
-	IE          string
-	OriginalURL string `gorm:"index"`
-	Type        string
+	IE string
 
-	URL       string
-	QueryID   string
-	Note      string
+	FeedType string
+
+	URL       string `gorm:"index"`
+	MediaID   string
 	Title     string
 	Thumbnail string
 
-	EntryCount int64
-	Entries    []*FeedEntry `gorm:"foreignKey:OwnerID"`
+	LastUpdate time.Time
+	Assets     []*Assets `gorm:"foreignKey:OwnerFeedID"`
 }
 
 func (f *Feed) TableName() string {
 	return "feeds"
+}
+
+type Bundles struct {
+	gorm.Model
+
+	URL       string
+	Title     string
+	Thumbnail string
+
+	AssetsCount int64
+	Assets      []*Assets `gorm:"foreignKey:OwnerBundleID"`
+}
+
+func (b *Bundles) TableName() string {
+	return "bundles"
 }

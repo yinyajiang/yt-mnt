@@ -4,8 +4,8 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"time"
 
-	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 	"github.com/yinyajiang/yt-mnt/pkg/ies/instagram/insapi"
 )
@@ -37,12 +37,12 @@ func (i *InstagramIE) IsMatched(link string) bool {
 	return strings.Contains(link, "instagram.com")
 }
 
-func (i *InstagramIE) Parse(link string, _ ...ies.ParseOptions) (*model.MediaEntry, error) {
+func (i *InstagramIE) Parse(link string, _ ...ies.ParseOptions) (*ies.MediaEntry, error) {
 	kind, usr, err := parseInstagramURL(link)
 	if err != nil {
 		return nil, err
 	}
-	var entry *model.MediaEntry
+	var entry *ies.MediaEntry
 	switch kind {
 	case kindUser:
 		entry, err = i.client.User(usr)
@@ -52,24 +52,20 @@ func (i *InstagramIE) Parse(link string, _ ...ies.ParseOptions) (*model.MediaEnt
 	if err != nil {
 		return nil, err
 	}
-	entry.MediaType = model.MediaTypeUser
-	entry.SetNew(true)
+	entry.MediaType = ies.MediaTypeUser
 	return entry, nil
 }
 
-func (i *InstagramIE) ExtractPage(linkInfo ies.LinkInfo, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
-	if linkInfo.MediaType != model.MediaTypeUser {
+func (i *InstagramIE) ExtractPage(linkInfo ies.LinkInfo, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+	if linkInfo.MediaType != ies.MediaTypeUser {
 		return nil, errors.New("only user media type is supported")
 	}
 	return i.client.UserPostWithPageID(linkInfo.MediaID, nextPage)
 }
 
-func (i *InstagramIE) UpdateMedia(entry *model.MediaEntry) error {
-	return ies.HelperUpdateSubItems(entry,
-		func(userID string) (int64, error) {
-			return i.client.GetUserPostsCount(userID)
-		},
-		func(userID string, latestCount ...int64) ([]*model.MediaEntry, error) {
-			return i.client.UserPosts(userID, latestCount...)
-		})
+func (i *InstagramIE) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*ies.MediaEntry, error) {
+	return ies.HelperGetSubItemsByTime(paretnMediaID,
+		func(mediaID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+			return i.client.UserPostWithPageID(mediaID, nextPage)
+		}, afterTime)
 }

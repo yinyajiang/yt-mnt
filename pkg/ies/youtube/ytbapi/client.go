@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 
 	"google.golang.org/api/option"
@@ -26,7 +25,7 @@ func New(apiKey string) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) Channel(chnnelID string) (*model.MediaEntry, error) {
+func (c *Client) Channel(chnnelID string) (*ies.MediaEntry, error) {
 	var channelPart = []string{"snippet", "contentDetails", "statistics"}
 	call := c.service.Channels.List(channelPart)
 	call = call.Id(chnnelID)
@@ -35,10 +34,9 @@ func (c *Client) Channel(chnnelID string) (*model.MediaEntry, error) {
 		return nil, err
 	}
 	item := response.Items[0]
-	ret := &model.MediaEntry{
+	ret := &ies.MediaEntry{
 		URL:       "https://www.youtube.com/channel/" + chnnelID,
-		Note:      "youtube-channel",
-		MediaType: model.MediaTypeUser,
+		MediaType: ies.MediaTypeUser,
 	}
 	if item.Snippet != nil {
 		ret.Title = item.Snippet.Title
@@ -51,7 +49,7 @@ func (c *Client) Channel(chnnelID string) (*model.MediaEntry, error) {
 		ret.MediaID = item.ContentDetails.RelatedPlaylists.Uploads
 	}
 	if item.Statistics != nil {
-		ret.QueryEntryCount = int64(item.Statistics.VideoCount)
+		ret.EntryCount = int64(item.Statistics.VideoCount)
 	}
 	return ret, nil
 }
@@ -66,7 +64,7 @@ func (c *Client) PlaylistsVideoCount(playlistID string) (int64, error) {
 	return response.Items[0].ContentDetails.ItemCount, nil
 }
 
-func (c *Client) Playlist(playlistID string) (*model.MediaEntry, error) {
+func (c *Client) Playlist(playlistID string) (*ies.MediaEntry, error) {
 	var playlistPart = []string{"snippet", "contentDetails"}
 	call := c.service.Playlists.List(playlistPart)
 	call = call.Id(playlistID)
@@ -75,11 +73,10 @@ func (c *Client) Playlist(playlistID string) (*model.MediaEntry, error) {
 		return nil, err
 	}
 	item := response.Items[0]
-	ret := &model.MediaEntry{
+	ret := &ies.MediaEntry{
 		URL:       "https://www.youtube.com/playlist?list=" + playlistID,
-		Note:      "youtube-playlist",
 		MediaID:   playlistID,
-		MediaType: model.MediaTypePlaylist,
+		MediaType: ies.MediaTypePlaylist,
 	}
 	if item.Snippet != nil {
 		ret.Title = item.Snippet.Title
@@ -89,19 +86,19 @@ func (c *Client) Playlist(playlistID string) (*model.MediaEntry, error) {
 		ret.Thumbnail = item.Snippet.Thumbnails.Default.Url
 	}
 	if item.ContentDetails != nil {
-		ret.QueryEntryCount = item.ContentDetails.ItemCount
+		ret.EntryCount = item.ContentDetails.ItemCount
 	}
 	return ret, nil
 }
 
-func (c *Client) PlaylistsVideo(playlistID string, latestCount ...int64) ([]*model.MediaEntry, error) {
+func (c *Client) PlaylistsVideo(playlistID string, latestCount ...int64) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItems(playlistID,
-		func(playlistQueryID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+		func(playlistQueryID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
 			return c.PlaylistsVideoWithPage(playlistQueryID, nextPage)
 		}, latestCount...)
 }
 
-func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
 	if nextPage == nil {
 		return c.PlaylistsVideo(playlistID, -1)
 	}
@@ -122,9 +119,9 @@ func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPag
 	if err != nil {
 		return nil, err
 	}
-	ret := []*model.MediaEntry{}
+	ret := []*ies.MediaEntry{}
 	for _, item := range response.Items {
-		video := &model.MediaEntry{}
+		video := &ies.MediaEntry{}
 		if item.Snippet != nil {
 			video.Title = item.Snippet.Title
 			video.Description = item.Snippet.Description
@@ -135,7 +132,7 @@ func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPag
 				video.MediaID = item.Snippet.ResourceId.VideoId
 			}
 			video.URL = "https://www.youtube.com/watch?v=" + video.MediaID
-			video.MediaType = model.MediaTypeVideo
+			video.MediaType = ies.MediaTypeVideo
 		}
 		if video.MediaID == "" {
 			continue
@@ -152,9 +149,9 @@ func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPag
 	return ret, nil
 }
 
-func (c *Client) ChannelsPlaylist(chnnelID string) ([]*model.MediaEntry, error) {
+func (c *Client) ChannelsPlaylist(chnnelID string) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItems(chnnelID,
-		func(chnnelID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+		func(chnnelID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
 			return c.ChannelsPlaylistWithPage(chnnelID, nextPage)
 		})
 }
@@ -173,7 +170,7 @@ func (c *Client) ChannelsPlaylistCount(chnnelID string) (int64, error) {
 	return count, nil
 }
 
-func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPage) ([]*model.MediaEntry, error) {
+func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
 	if nextPage == nil {
 		return c.ChannelsPlaylist(chnnelID)
 	}
@@ -194,13 +191,12 @@ func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPag
 		return nil, err
 	}
 
-	ret := []*model.MediaEntry{}
+	ret := []*ies.MediaEntry{}
 	for _, item := range response.Items {
-		playlist := &model.MediaEntry{
-			Note:      "youtube-playlist",
+		playlist := &ies.MediaEntry{
 			MediaID:   item.Id,
 			URL:       "https://www.youtube.com/playlist?list=" + item.Id,
-			MediaType: model.MediaTypePlaylist,
+			MediaType: ies.MediaTypePlaylist,
 		}
 		if item.Snippet != nil {
 			playlist.Title = item.Snippet.Title
@@ -211,7 +207,7 @@ func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPag
 			playlist.UploadDate, _ = parseDate(item.Snippet.PublishedAt)
 		}
 		if item.ContentDetails != nil {
-			playlist.QueryEntryCount = item.ContentDetails.ItemCount
+			playlist.EntryCount = item.ContentDetails.ItemCount
 		}
 		ret = append(ret, playlist)
 	}

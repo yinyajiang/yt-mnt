@@ -2,8 +2,7 @@ package ies
 
 import (
 	"errors"
-
-	"github.com/yinyajiang/yt-mnt/model"
+	"time"
 )
 
 type LinkInfo struct {
@@ -19,13 +18,12 @@ type NextPage struct {
 }
 
 type ParseOptions struct {
-	MustCount bool
 }
 
 type InfoExtractor interface {
-	Parse(link string, options ...ParseOptions) (*model.MediaEntry, error)
-	ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*model.MediaEntry, error)
-	UpdateMedia(update *model.MediaEntry) error
+	Parse(link string, options ...ParseOptions) (*MediaEntry, error)
+	ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*MediaEntry, error)
+	ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*MediaEntry, error)
 	IsMatched(url string) bool
 	Name() string
 }
