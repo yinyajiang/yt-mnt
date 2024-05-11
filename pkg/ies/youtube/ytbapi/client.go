@@ -93,12 +93,12 @@ func (c *Client) Playlist(playlistID string) (*ies.MediaEntry, error) {
 
 func (c *Client) PlaylistsVideo(playlistID string, latestCount ...int64) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItems(playlistID,
-		func(playlistQueryID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+		func(playlistQueryID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 			return c.PlaylistsVideoWithPage(playlistQueryID, nextPage)
 		}, latestCount...)
 }
 
-func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 	if nextPage == nil {
 		return c.PlaylistsVideo(playlistID, -1)
 	}
@@ -151,7 +151,7 @@ func (c *Client) PlaylistsVideoWithPage(playlistID string, nextPage *ies.NextPag
 
 func (c *Client) ChannelsPlaylist(chnnelID string) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItems(chnnelID,
-		func(chnnelID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+		func(chnnelID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 			return c.ChannelsPlaylistWithPage(chnnelID, nextPage)
 		})
 }
@@ -170,7 +170,7 @@ func (c *Client) ChannelsPlaylistCount(chnnelID string) (int64, error) {
 	return count, nil
 }
 
-func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+func (c *Client) ChannelsPlaylistWithPage(chnnelID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 	if nextPage == nil {
 		return c.ChannelsPlaylist(chnnelID)
 	}

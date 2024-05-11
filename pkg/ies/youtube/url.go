@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	kindChannel = iota + 1
-	kindPlaylist
-	kindPlaylistGroup
+	kindChannel       = "channel"
+	kindPlaylist      = "playlist"
+	kindPlaylistGroup = "playlist_group"
 )
 
-func parseYoutubeURL(link string) (kind int, id string, err error) {
+func parseYoutubeURL(link string) (kind, id string, err error) {
 	if !strings.HasPrefix(link, "http") {
 		link = "https://" + link
 	}

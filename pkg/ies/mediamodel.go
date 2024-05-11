@@ -18,15 +18,16 @@ const (
 	MediaTypeImage
 	MediaTypeCarousel
 
-	MediaTypeUser
+	/**************************/
 	MediaTypePlaylist
 	MediaTypePlaylistGroup
+	MediaTypeUser
 )
 
 type MediaEntry struct {
 	MediaType int
-	LinkID    string
 	MediaID   string
+	IsPrivate bool
 
 	Title       string
 	Description string
@@ -34,19 +35,11 @@ type MediaEntry struct {
 	URL         string
 	Duration    int64
 	UploadDate  time.Time
-	IsPrivate   bool
+	Formats     []*Format
+	EntryCount  int64
+	Entries     []*MediaEntry
 
-	Formats    []*Format
-	EntryCount int64
-	Entries    []*MediaEntry
-}
-
-func (m *MediaEntry) LinkInfo() LinkInfo {
-	return LinkInfo{
-		LinkID:    m.LinkID,
-		MediaID:   m.MediaID,
-		MediaType: m.MediaType,
-	}
+	Reserve any
 }
 
 func (f *Format) Value() (driver.Value, error) {

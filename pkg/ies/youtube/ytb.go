@@ -41,10 +41,10 @@ func (y *YoutubeIE) IsMatched(link string) bool {
 	return strings.Contains(link, "youtube.com")
 }
 
-func (y *YoutubeIE) Parse(link string, _ ...ies.ParseOptions) (*ies.MediaEntry, error) {
+func (y *YoutubeIE) ParseRoot(link string, _ ...ies.ParseOptions) (*ies.MediaEntry, *ies.RootToken, error) {
 	linkkind, linkid, err := parseYoutubeURL(link)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var entry *ies.MediaEntry
@@ -62,33 +62,55 @@ func (y *YoutubeIE) Parse(link string, _ ...ies.ParseOptions) (*ies.MediaEntry, 
 	case kindPlaylistGroup:
 		entry, err = y.client.Channel(linkid)
 		if err == nil {
+			entry.Reserve = entry.EntryCount
 			entry.EntryCount = 0
 			entry.MediaType = ies.MediaTypePlaylistGroup
 			entry.EntryCount, _ = y.client.ChannelsPlaylistCount(linkid)
 		}
 	default:
-		return nil, errors.New("unsupported url type")
+		return nil, nil, errors.New("unsupported url type")
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	entry.LinkID = linkid
-	return entry, nil
+	return entry, &ies.RootToken{
+		LinkID:    linkid,
+		MediaID:   entry.MediaID,
+		MediaType: entry.MediaType,
+	}, nil
 }
 
-func (y *YoutubeIE) ExtractPage(linkInfo ies.LinkInfo, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
-	switch linkInfo.MediaType {
+func (y *YoutubeIE) ConvertToUserRoot(rootToken *ies.RootToken, rootInfo *ies.MediaEntry) error {
+	if rootInfo == nil {
+		return errors.New("invalid root or rootInfo")
+	}
+	if rootInfo.MediaType == ies.MediaTypeUser {
+		return nil
+	}
+	if rootInfo.MediaType == ies.MediaTypePlaylistGroup {
+		if rootInfo.Reserve == nil {
+			return errors.New("invalid reserve count")
+		}
+		rootInfo.MediaType = ies.MediaTypeUser
+		rootInfo.EntryCount, _ = rootInfo.Reserve.(int64)
+		return nil
+	}
+	return errors.New("unsupported media type for convert to user root")
+}
+
+func (y *YoutubeIE) ExtractPage(root *ies.RootToken, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
+	switch root.MediaType {
 	case ies.MediaTypePlaylistGroup:
-		return y.client.ChannelsPlaylistWithPage(linkInfo.LinkID, nextPage)
+		return y.client.ChannelsPlaylistWithPage(root.LinkID, nextPage)
 	case ies.MediaTypePlaylist, ies.MediaTypeUser:
-		return y.client.PlaylistsVideoWithPage(linkInfo.MediaID, nextPage)
+		return y.client.PlaylistsVideoWithPage(root.MediaID, nextPage)
 	}
 	return nil, errors.New("unsupported media type")
 }
 
 func (y *YoutubeIE) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItemsByTime(paretnMediaID,
-		func(mediaID string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+		func(mediaID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 			return y.client.PlaylistsVideoWithPage(mediaID, nextPage)
 		}, afterTime)
 }

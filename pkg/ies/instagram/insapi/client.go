@@ -110,7 +110,7 @@ func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*ies.M
 		leftCount = math.MaxInt64
 	}
 	ret := make([]*ies.MediaEntry, 0)
-	nextPage := ies.NextPage{}
+	nextPage := ies.NextPageToken{}
 	for {
 		if leftCount <= 0 || nextPage.IsEnd {
 			break
@@ -130,7 +130,7 @@ func (i *InstagramApi) UserPosts(user_id string, latestCount ...int64) ([]*ies.M
 	return ret, nil
 }
 
-func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *ies.NextPage) ([]*ies.MediaEntry, error) {
+func (i *InstagramApi) UserPostWithPageID(user_id string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 	if nextPage == nil {
 		return i.UserPosts(user_id)
 	}

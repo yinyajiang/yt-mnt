@@ -1,4 +1,4 @@
-package model
+package monitor
 
 import (
 	"time"
@@ -21,7 +21,7 @@ const (
 )
 
 // 每个是一个可下载项
-type Assets struct {
+type Asset struct {
 	gorm.Model
 	OwnerFeedID   uint
 	OwnerBundleID uint
@@ -31,9 +31,9 @@ type Assets struct {
 	Title     string
 	Thumbnail string
 
-	URL            string
-	Quality        string
-	DownloadFormat *ies.Format `gorm:"type:json"`
+	URL           string
+	Quality       string
+	QualityFormat *ies.Format `gorm:"type:json"`
 
 	Downloader     string
 	DownloaderData string
@@ -45,7 +45,7 @@ type Assets struct {
 	DownloadPercent   float64
 }
 
-func (a *Assets) TableName() string {
+func (a *Asset) TableName() string {
 	return "assets"
 }
 
@@ -66,24 +66,24 @@ type Feed struct {
 	Thumbnail string
 
 	LastUpdate time.Time
-	Assets     []*Assets `gorm:"foreignKey:OwnerFeedID"`
+	Assets     []*Asset `gorm:"foreignKey:OwnerFeedID"`
 }
 
 func (f *Feed) TableName() string {
 	return "feeds"
 }
 
-type Bundles struct {
+type Bundle struct {
 	gorm.Model
 
-	URL       string
-	Title     string
-	Thumbnail string
+	URL        string
+	Title      string
+	Thumbnail  string
+	UploadDate time.Time
 
-	AssetsCount int64
-	Assets      []*Assets `gorm:"foreignKey:OwnerBundleID"`
+	Assets []*Asset `gorm:"foreignKey:OwnerBundleID"`
 }
 
-func (b *Bundles) TableName() string {
+func (b *Bundle) TableName() string {
 	return "bundles"
 }

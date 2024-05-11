@@ -5,13 +5,13 @@ import (
 	"time"
 )
 
-type LinkInfo struct {
+type RootToken struct {
 	LinkID    string
 	MediaID   string
 	MediaType int
 }
 
-type NextPage struct {
+type NextPageToken struct {
 	NextPageID    string
 	HintPageCount int64
 	IsEnd         bool
@@ -21,10 +21,11 @@ type ParseOptions struct {
 }
 
 type InfoExtractor interface {
-	Parse(link string, options ...ParseOptions) (*MediaEntry, error)
-	ExtractPage(linkInfo LinkInfo, nextPage *NextPage) ([]*MediaEntry, error)
-	ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*MediaEntry, error)
-	IsMatched(url string) bool
+	ParseRoot(link string, options ...ParseOptions) (*MediaEntry, *RootToken, error)
+	ConvertToUserRoot(rootToken *RootToken, rootInfo *MediaEntry) error
+	ExtractPage(rootToken *RootToken, nextPage *NextPageToken) ([]*MediaEntry, error)
+	ExtractAllAfterTime(parentMediaID string, afterTime time.Time) ([]*MediaEntry, error)
+	IsMatched(link string) bool
 	Name() string
 }
 
@@ -33,7 +34,7 @@ var (
 )
 
 func Regist(ie InfoExtractor) {
-	_ies[ie.Name()] = &cacheInfoExtractor{
+	_ies[ie.Name()] = &middleInfoExtractor{
 		ie:    ie,
 		cache: make([]cacheInfo, 0),
 	}

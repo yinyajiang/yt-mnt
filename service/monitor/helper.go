@@ -24,7 +24,7 @@ func selectFormatByResolution(formats []*ies.Format, resolution string) (index i
 }
 
 func plain(items []*ies.MediaEntry) []*ies.MediaEntry {
-	outAll := make([]*ies.MediaEntry, len(items))
+	outAll := make([]*ies.MediaEntry, 0, len(items))
 	plainAppend(&outAll, items)
 	return outAll
 }
@@ -34,7 +34,7 @@ func plainAppend(outAll *[]*ies.MediaEntry, items []*ies.MediaEntry) {
 		return
 	}
 	if *outAll == nil {
-		*outAll = make([]*ies.MediaEntry, len(items))
+		*outAll = make([]*ies.MediaEntry, 0, len(items))
 	}
 	for _, item := range items {
 		if item.MediaType == ies.MediaTypeVideo ||

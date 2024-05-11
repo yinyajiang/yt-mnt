@@ -8,9 +8,9 @@ import (
 	"github.com/duke-git/lancet/v2/slice"
 )
 
-type GetSubItemCount = func(mediaID string) (int64, error)
-type GetSubItemsOrderWithPage = func(mediaID string, nextPage *NextPage) ([]*MediaEntry, error)
-type GetSubItemsWithPage = func(mediaID string, nextPage *NextPage) ([]*MediaEntry, error)
+type GetSubItemCount = func(parentID string) (int64, error)
+type GetSubItemsOrderWithPage = func(parentID string, nextPage *NextPageToken) ([]*MediaEntry, error)
+type GetSubItemsWithPage = func(parentID string, nextPage *NextPageToken) ([]*MediaEntry, error)
 
 func HelperGetSubItemsByTime(parentID string, getSubItemsWithPageID GetSubItemsOrderWithPage, afterTime time.Time) (retItems []*MediaEntry, err error) {
 	retItems = make([]*MediaEntry, 0)
@@ -20,7 +20,7 @@ func HelperGetSubItemsByTime(parentID string, getSubItemsWithPageID GetSubItemsO
 			return
 		}
 	} else {
-		nextPage := NextPage{}
+		nextPage := NextPageToken{}
 	pageloop:
 		for {
 			if nextPage.IsEnd {
@@ -54,7 +54,7 @@ func HelperGetSubItems(mediaID string, getSubItemsWithPageID GetSubItemsWithPage
 		leftCount = math.MaxInt64
 	}
 	ret := make([]*MediaEntry, 0)
-	nextPage := NextPage{}
+	nextPage := NextPageToken{}
 	for {
 		if leftCount <= 0 || nextPage.IsEnd {
 			break

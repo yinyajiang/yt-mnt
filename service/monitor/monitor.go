@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/yinyajiang/yt-mnt/model"
 	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 	_ "github.com/yinyajiang/yt-mnt/pkg/downloader/direct"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
@@ -25,8 +24,9 @@ type Monitor struct {
 
 func NewMonitor(dbpath string, verbose bool) *Monitor {
 	storage, err := storage.NewStorage(dbpath, verbose,
-		&model.Feed{},
-		&model.Assets{},
+		&Feed{},
+		&Asset{},
+		&Bundle{},
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -46,20 +46,21 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 	if err != nil {
 		return nil, err
 	}
-	info, err := ie.Parse(url, opt...)
+	info, rootToken, err := ie.ParseRoot(url, opt...)
 	if err != nil {
 		return nil, err
 	}
 	var explorer Explorer
-	explorer.ie = ie.Name()
-	explorer.root = *info
+	explorer.ie = ie
+	explorer.rootInfo = *info
+	explorer.rootToken = *rootToken
 	explorer.pageIndex = 0
 	return &explorer, nil
 }
 
-func (m *Monitor) UpdateFeed(feedid uint, quality string) (newAssets []*model.Assets, err error) {
-	var feed model.Feed
-	err = m._db.First(&feed, &model.Feed{
+func (m *Monitor) UpdateFeed(feedid uint, quality string) (newAssets []*Asset, err error) {
+	var feed Feed
+	err = m._db.First(&feed, &Feed{
 		Model: gorm.Model{
 			ID: feedid,
 		},
@@ -78,11 +79,11 @@ func (m *Monitor) UpdateFeed(feedid uint, quality string) (newAssets []*model.As
 	if len(newEntries) == 0 {
 		return
 	}
-	newAssets, err = m.saveMediaEntryes2Assets(feed.IE, newEntries, feed.ID, 0, quality)
+	newAssets, err = m.saveMedia2Assets(feed.IE, newEntries, feed.ID, 0, quality)
 	if err != nil {
 		return
 	}
-	err = m._db.Updates(&model.Feed{
+	err = m._db.Updates(&Feed{
 		Model: gorm.Model{
 			ID: feedid,
 		},
@@ -92,36 +93,36 @@ func (m *Monitor) UpdateFeed(feedid uint, quality string) (newAssets []*model.As
 }
 
 func (m *Monitor) Unsubscribe(feedid uint) {
-	m._db.Unscoped().Delete(&model.Feed{
+	m._db.Unscoped().Delete(&Feed{
 		Model: gorm.Model{
 			ID: feedid,
 		},
 	})
-	m._db.Unscoped().Delete(&model.Assets{
+	m._db.Unscoped().Delete(&Asset{
 		OwnerFeedID: feedid,
 	})
 }
 
 func (m *Monitor) DeleteBundle(bundleid uint) {
-	m._db.Unscoped().Delete(&model.Bundles{
+	m._db.Unscoped().Delete(&Bundle{
 		Model: gorm.Model{
 			ID: bundleid,
 		},
 	})
-	m._db.Unscoped().Delete(&model.Assets{
+	m._db.Unscoped().Delete(&Asset{
 		OwnerBundleID: bundleid,
 	})
 }
 
 func (m *Monitor) Clear() {
-	m._db.Unscoped().Where("1 = 1").Delete(&model.Feed{})
-	m._db.Unscoped().Where("1 = 1").Delete(&model.Assets{})
-	m._db.Unscoped().Where("1 = 1").Delete(&model.Bundles{})
+	m._db.Unscoped().Where("1 = 1").Delete(&Feed{})
+	m._db.Unscoped().Where("1 = 1").Delete(&Asset{})
+	m._db.Unscoped().Where("1 = 1").Delete(&Bundle{})
 }
 
-func (m *Monitor) GetFeedDetail(feedid uint) (*model.Feed, error) {
-	var feed model.Feed
-	err := m._db.Preload(clause.Associations).First(&feed, model.Feed{
+func (m *Monitor) GetFeedDetail(feedid uint) (*Feed, error) {
+	var feed Feed
+	err := m._db.Preload(clause.Associations).First(&feed, Feed{
 		Model: gorm.Model{
 			ID: feedid,
 		},
@@ -129,8 +130,8 @@ func (m *Monitor) GetFeedDetail(feedid uint) (*model.Feed, error) {
 	return &feed, err
 }
 
-func (m *Monitor) ListFeeds(preload bool) ([]*model.Feed, error) {
-	var feeds []*model.Feed
+func (m *Monitor) ListFeeds(preload bool) ([]*Feed, error) {
+	var feeds []*Feed
 	var err error
 	if preload {
 		err = m._db.Preload(clause.Associations).Find(&feeds).Error
@@ -140,9 +141,20 @@ func (m *Monitor) ListFeeds(preload bool) ([]*model.Feed, error) {
 	return feeds, err
 }
 
-func (m *Monitor) GetAsset(id uint) (*model.Assets, error) {
-	var entry model.Assets
-	err := m._db.First(&entry, &model.Assets{
+func (m *Monitor) ListBundles(preload bool) ([]*Bundle, error) {
+	var bundles []*Bundle
+	var err error
+	if preload {
+		err = m._db.Preload(clause.Associations).Find(&bundles).Error
+	} else {
+		err = m._db.Find(&bundles).Error
+	}
+	return bundles, err
+}
+
+func (m *Monitor) GetAsset(id uint) (*Asset, error) {
+	var entry Asset
+	err := m._db.First(&entry, &Asset{
 		Model: gorm.Model{
 			ID: id,
 		},
@@ -150,20 +162,41 @@ func (m *Monitor) GetAsset(id uint) (*model.Assets, error) {
 	return &entry, err
 }
 
-func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*model.Feed, error) {
-	bundles := m.selectedBundlesMedia(explorer, false)
-	if len(bundles) == 0 {
-		return nil, nil
+func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Feed, error) {
+	switch explorer.RootMediaType() {
+	case ies.MediaTypePlaylist:
+		if explorer.firstSelectedIndex() != IndexRoot {
+			return nil, fmt.Errorf("unsupported subscribe selected item")
+		}
+	case ies.MediaTypeUser:
+		if explorer.firstSelectedIndex() != IndexRoot && explorer.firstSelectedIndex() != IndexUser {
+			return nil, fmt.Errorf("unsupported subscribe selected item")
+		}
+	case ies.MediaTypePlaylistGroup:
+		break
+	default:
+		return nil, fmt.Errorf("explored media type unsupported subscribe")
 	}
-	return m.saveBundles2Feed(explorer.ie, bundles)
+	bundles, err := m.selectedBundlesMedia(explorer, false)
+	if err != nil {
+		return nil, err
+	}
+	return m.saveBundles2Feed(explorer.ie.Name(), bundles)
 }
 
-func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality string) ([]*model.Bundles, error) {
-	bundles := m.selectedBundlesMedia(explorer, true)
-	if len(bundles) == 0 {
-		return nil, nil
+func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality string) ([]*Bundle, error) {
+	switch explorer.RootMediaType() {
+	case ies.MediaTypeUser:
+		if explorer.firstSelectedIndex() == IndexUser {
+			explorer.ExploreNextAll()
+		}
 	}
-	return m.saveBundles2Assets(explorer.ie, quality, bundles)
+
+	bundles, err := m.selectedBundlesMedia(explorer, true)
+	if err != nil {
+		return nil, err
+	}
+	return m.saveBundles2Assets(explorer.ie.Name(), quality, bundles)
 }
 
 func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink downloader.ProgressSink) error {
@@ -180,19 +213,19 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink downloader.Pr
 		Quality:        asset.Quality,
 		DownloadDir:    asset.DownloadDir,
 		DownloadFile:   asset.DownloadFile,
-		DownloadFormat: *asset.DownloadFormat,
+		DownloadFormat: *asset.QualityFormat,
 		DownloaderData: &asset.DownloaderData,
 	}, sink)
 	//防止被修改了
 	asset.Model = modelValue
 	if err != nil {
 		if ok {
-			asset.Status = model.AssetStatusDownloading
+			asset.Status = AssetStatusDownloading
 		} else {
-			asset.Status = model.AssetStatusFail
+			asset.Status = AssetStatusFail
 		}
 	} else {
-		asset.Status = model.AssetStatusFinished
+		asset.Status = AssetStatusFinished
 	}
 	if e := m._db.Save(asset).Error; e != nil {
 		log.Printf("db save fail: %s", e)
@@ -200,10 +233,14 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink downloader.Pr
 	return err
 }
 
-func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bool) []*ies.MediaEntry {
+func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bool) ([]*ies.MediaEntry, error) {
+	selected, err := explorer.Selected()
+	if err != nil {
+		return nil, err
+	}
 	root := explorer.Root()
 	bundles := []*ies.MediaEntry{}
-	for _, item := range explorer.Selected(true) {
+	for _, item := range selected {
 		switch item.MediaType {
 		case ies.MediaTypeVideo, ies.MediaTypeAudio, ies.MediaTypeImage, ies.MediaTypeCarousel:
 			if isDeepDownloadable {
@@ -228,7 +265,10 @@ func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bo
 	if len(root.Entries) != 0 {
 		bundles = append(bundles, root)
 	}
-	return bundles
+	if len(bundles) == 0 {
+		err = fmt.Errorf("no media selected")
+	}
+	return bundles, err
 }
 
 /* 每个item表示一个bundle(user/playlist),bundle的子项一定是可以下载的媒体类型 */
@@ -237,13 +277,12 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	if err != nil {
 		return nil
 	}
-	explorer.ExplorerAll()
-	explorer.SetPageIndexToHead()
+	explorer.ExploreNextAll()
 
 	root := explorer.Root()
 	ret := make([]*ies.MediaEntry, 0)
 
-	for _, item := range explorer.Page() {
+	for _, item := range explorer.AllPage() {
 		switch item.MediaType {
 		case ies.MediaTypeAudio, ies.MediaTypeVideo, ies.MediaTypeImage, ies.MediaTypeCarousel:
 			root.Entries = append(root.Entries, item)
@@ -265,10 +304,10 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles2Feed(ie string, bundles []*ies.MediaEntry) (feeds []*model.Feed, err error) {
-	feeds = make([]*model.Feed, 0)
+func (m *Monitor) saveBundles2Feed(ie string, bundles []*ies.MediaEntry) (feeds []*Feed, err error) {
+	feeds = make([]*Feed, 0)
 	for _, bundle := range bundles {
-		feed := &model.Feed{
+		feed := &Feed{
 			IE:         ie,
 			URL:        bundle.URL,
 			Title:      bundle.Title,
@@ -277,9 +316,9 @@ func (m *Monitor) saveBundles2Feed(ie string, bundles []*ies.MediaEntry) (feeds 
 			LastUpdate: time.Now(),
 		}
 		if bundle.MediaType == ies.MediaTypeUser {
-			feed.FeedType = model.FeedUser
+			feed.FeedType = FeedUser
 		} else if bundle.MediaType == ies.MediaTypePlaylist {
-			feed.FeedType = model.FeedPlaylist
+			feed.FeedType = FeedPlaylist
 		} else {
 			err = fmt.Errorf("feed unsupported media type: %d", bundle.MediaType)
 			continue
@@ -292,22 +331,23 @@ func (m *Monitor) saveBundles2Feed(ie string, bundles []*ies.MediaEntry) (feeds 
 	return feeds, err
 }
 
-func (m *Monitor) saveBundles2Assets(ie string, quality string, mediaBundles []*ies.MediaEntry) (bundles []*model.Bundles, err error) {
-	bundles = make([]*model.Bundles, 0)
+func (m *Monitor) saveBundles2Assets(ie string, quality string, mediaBundles []*ies.MediaEntry) (bundles []*Bundle, err error) {
+	bundles = make([]*Bundle, 0)
 	for _, mediaBundle := range mediaBundles {
-		bundle := &model.Bundles{
-			URL:       mediaBundle.URL,
-			Title:     mediaBundle.Title,
-			Thumbnail: mediaBundle.Thumbnail,
+		bundle := &Bundle{
+			URL:        mediaBundle.URL,
+			Title:      mediaBundle.Title,
+			Thumbnail:  mediaBundle.Thumbnail,
+			UploadDate: mediaBundle.UploadDate,
 		}
 		err = m._db.Create(bundle).Error
 		if err != nil {
 			continue
 		}
 
-		subAssets, err := m.saveMediaEntryes2Assets(ie, mediaBundle.Entries, 0, bundle.ID, quality)
+		assets, err := m.saveMedia2Assets(ie, mediaBundle.Entries, 0, bundle.ID, quality)
 		if err == nil {
-			bundle.Assets = subAssets
+			bundle.Assets = assets
 			bundles = append(bundles, bundle)
 		}
 	}
@@ -317,38 +357,37 @@ func (m *Monitor) saveBundles2Assets(ie string, quality string, mediaBundles []*
 	return bundles, err
 }
 
-func (m *Monitor) saveMediaEntryes2Assets(ie string, entryies []*ies.MediaEntry, ownerFeedID, ownerBundleID uint, quality string) (retAssets []*model.Assets, err error) {
+func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, ownerFeedID, ownerBundleID uint, quality string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
-
-	retAssets = make([]*model.Assets, len(entryies))
-
+	retAssets = make([]*Asset, 0, len(entryies))
 	downer := downloader.GetByIE(ie)
-
 	for _, entry := range entryies {
 		var qualityFormat *ies.Format
 		if downer.IsNeedFormat() {
-			if index := selectFormatByResolution(entry.Formats, quality); index >= 0 {
-				qualityFormat = entry.Formats[index]
+			if len(entry.Formats) == 0 {
+				err = fmt.Errorf("no format found for entry: %s", entry.URL)
+				continue
 			}
+			qualityFormat = entry.Formats[selectFormatByResolution(entry.Formats, quality)]
 		}
-		asset := &model.Assets{
-			Status: model.AssetStatusNew,
+		asset := &Asset{
+			Status: AssetStatusNew,
 
-			Title:          entry.Title,
-			URL:            entry.URL,
-			Quality:        quality,
-			Thumbnail:      entry.Thumbnail,
-			DownloadFormat: qualityFormat,
+			Title:         entry.Title,
+			URL:           entry.URL,
+			Quality:       quality,
+			Thumbnail:     entry.Thumbnail,
+			QualityFormat: qualityFormat,
 
 			Downloader: downer.Name(),
 		}
 		switch entry.MediaType {
 		case ies.MediaTypeVideo:
-			asset.Type = model.AssetTypeVideo
+			asset.Type = AssetTypeVideo
 		case ies.MediaTypeAudio:
-			asset.Type = model.AssetTypeAudio
+			asset.Type = AssetTypeAudio
 		case ies.MediaTypeImage:
-			asset.Type = model.AssetTypeImage
+			asset.Type = AssetTypeImage
 		default:
 			err = fmt.Errorf("unsupported media type: %d", asset.Type)
 			log.Println(err)
