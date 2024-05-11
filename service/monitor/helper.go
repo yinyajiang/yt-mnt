@@ -11,6 +11,13 @@ func selectFormatByResolution(formats []*ies.Format, resolution string) (index i
 	if len(formats) == 0 {
 		return -1
 	}
+	if resolution == "best" {
+		return 0
+	}
+	if resolution == "worst" {
+		return len(formats) - 1
+	}
+
 	r, _ := common.ParseResolutionInfo(resolution)
 	for i, f := range formats {
 		fr, _ := common.ParseResolutionInfo(fmt.Sprintf("%dx%d", f.Width, f.Height))
