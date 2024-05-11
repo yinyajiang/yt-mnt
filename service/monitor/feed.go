@@ -87,3 +87,9 @@ type Bundle struct {
 func (b *Bundle) TableName() string {
 	return "bundles"
 }
+
+type Preferences struct {
+	gorm.Model
+	Name                string `gorm:"unique"`
+	DefaultAssetQuality string
+}

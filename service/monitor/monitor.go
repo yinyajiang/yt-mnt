@@ -18,8 +18,9 @@ import (
 )
 
 type Monitor struct {
-	storage *storage.DBStorage
-	_db     *gorm.DB
+	storage     *storage.DBStorage
+	_db         *gorm.DB
+	preferences Preferences
 }
 
 func NewMonitor(dbpath string, verbose bool) *Monitor {
@@ -27,18 +28,34 @@ func NewMonitor(dbpath string, verbose bool) *Monitor {
 		&Feed{},
 		&Asset{},
 		&Bundle{},
+		&Preferences{},
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return &Monitor{
+
+	m := &Monitor{
 		storage: storage,
 		_db:     storage.GormDB(),
 	}
+	if e := m._db.First(&m.preferences, Preferences{
+		Name: "default",
+	}).Error; e != nil {
+		m.preferences = Preferences{
+			Name:                "default",
+			DefaultAssetQuality: "best",
+		}
+	}
+	return m
 }
 
 func (m *Monitor) Close() {
 	m.storage.Close()
+}
+
+func (m *Monitor) SetDefaultQuality(quality string) {
+	m.preferences.DefaultAssetQuality = quality
+	m._db.Save(&m.preferences)
 }
 
 func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, error) {
@@ -184,7 +201,7 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Feed, error) {
 	return m.saveBundles2Feed(explorer.ie.Name(), bundles)
 }
 
-func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality string) ([]*Bundle, error) {
+func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality ...string) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypeUser:
 		if explorer.firstSelectedIndex() == IndexUser {
@@ -196,7 +213,7 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality string) ([]*Bun
 	if err != nil {
 		return nil, err
 	}
-	return m.saveBundles2Assets(explorer.ie.Name(), quality, bundles)
+	return m.saveBundles2Assets(explorer.ie.Name(), bundles, quality...)
 }
 
 func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink downloader.ProgressSink) error {
@@ -331,7 +348,7 @@ func (m *Monitor) saveBundles2Feed(ie string, bundles []*ies.MediaEntry) (feeds 
 	return feeds, err
 }
 
-func (m *Monitor) saveBundles2Assets(ie string, quality string, mediaBundles []*ies.MediaEntry) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles2Assets(ie string, mediaBundles []*ies.MediaEntry, quality ...string) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
 	for _, mediaBundle := range mediaBundles {
 		bundle := &Bundle{
@@ -345,7 +362,7 @@ func (m *Monitor) saveBundles2Assets(ie string, quality string, mediaBundles []*
 			continue
 		}
 
-		assets, err := m.saveMedia2Assets(ie, mediaBundle.Entries, 0, bundle.ID, quality)
+		assets, err := m.saveMedia2Assets(ie, mediaBundle.Entries, 0, bundle.ID, quality...)
 		if err == nil {
 			bundle.Assets = assets
 			bundles = append(bundles, bundle)
@@ -357,10 +374,15 @@ func (m *Monitor) saveBundles2Assets(ie string, quality string, mediaBundles []*
 	return bundles, err
 }
 
-func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, ownerFeedID, ownerBundleID uint, quality string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, ownerFeedID, ownerBundleID uint, quality_ ...string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 	downer := downloader.GetByIE(ie)
+
+	quality := m.preferences.DefaultAssetQuality
+	if len(quality_) != 0 {
+		quality = quality_[0]
+	}
 	for _, entry := range entryies {
 		var qualityFormat *ies.Format
 		if downer.IsNeedFormat() {
