@@ -17,6 +17,10 @@ type middleInfoExtractor struct {
 }
 
 func (m *middleInfoExtractor) ParseRoot(link string, options ...ParseOptions) (*MediaEntry, *RootToken, error) {
+	if len(m.cache) > 10 {
+		m.cache = make([]cacheInfo, 0)
+	}
+
 	for _, cache := range m.cache {
 		if cache.url == link && time.Since(cache.timeStamp) < time.Minute*30 {
 			return cache.rootInfo, cache.rootToken, nil

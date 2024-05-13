@@ -2,23 +2,20 @@ package downloader
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"strings"
-
-	"github.com/yinyajiang/yt-mnt/pkg/ies"
+	"time"
 
 	"log"
+
+	"github.com/duke-git/lancet/v2/fileutil"
+	"github.com/duke-git/lancet/v2/random"
+	"github.com/yinyajiang/yt-mnt/pkg/common"
+	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
 
 type ProgressSink func(total, downloaded, speed int64, percent float64)
-
-type DownloadOptions struct {
-	URL            string
-	Quality        string
-	DownloadDir    string
-	DownloadFile   string
-	DownloadFormat ies.Format
-	DownloaderData *string
-}
 
 type Downloader interface {
 	Name() string
@@ -29,6 +26,63 @@ type Downloader interface {
 		ok==true 表示是可恢复的失败
 	*/
 	Download(ctx context.Context, opt DownloadOptions, sink ProgressSink, stageSaver ...DownloaderStageSaver) (ok bool, err error)
+}
+
+type DownloadOptions struct {
+	URL            string
+	Quality        string
+	DownloadFormat ies.Format
+
+	DownloadFileDir  string
+	DownloadFileStem *string
+	DownloadFileExt  *string
+	DownloaderData   *string
+}
+
+func (opt *DownloadOptions) FilePath() string {
+	if *opt.DownloadFileExt != "" && !strings.HasPrefix(*opt.DownloadFileExt, ".") {
+		*opt.DownloadFileExt = "." + *opt.DownloadFileExt
+	}
+	return filepath.Join(opt.DownloadFileDir, *opt.DownloadFileStem+*opt.DownloadFileExt)
+}
+
+func (opt *DownloadOptions) SetFileName(name string) {
+	i := strings.Index(name, ".")
+	if i == -1 || i == 0 || i == len(name)-1 {
+		return
+	}
+	*opt.DownloadFileExt = name[i:]
+	opt.SetStem(name[:i])
+	if !fileutil.IsExist(opt.FilePath()) {
+		return
+	}
+	*opt.DownloadFileStem += time.Now().Format("0102150405")
+	if !fileutil.IsExist(opt.FilePath()) {
+		return
+	}
+	*opt.DownloadFileStem += random.RandString(6)
+}
+
+func (opt *DownloadOptions) SetExt(ext string) {
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	*opt.DownloadFileExt = ext
+}
+
+func (opt *DownloadOptions) SetStem(stem string) {
+	*opt.DownloadFileStem = common.ReplaceWrongFileChars(stem)
+
+	path := opt.FilePath()
+	maxLength := 500
+	if strings.EqualFold(runtime.GOOS, "windows") {
+		maxLength = 255
+	}
+	if len(path) > maxLength {
+		if len := maxLength - len(opt.DownloadFileDir); len > 0 {
+			*opt.DownloadFileStem = (*opt.DownloadFileStem)[:len]
+		}
+	}
 }
 
 var _downloaders = make(map[string]Downloader)

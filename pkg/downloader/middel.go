@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"fmt"
 )
 
 type MiddleDownloader struct {
@@ -14,6 +15,9 @@ func (m *MiddleDownloader) Download(ctx context.Context, opt DownloadOptions, si
 		stageSaver = stageSaver_[0]
 	} else {
 		stageSaver = &DefaultDownloaderStageSaver{}
+	}
+	if opt.DownloadFileExt == nil || opt.DownloadFileStem == nil {
+		return false, fmt.Errorf("DownloadFileExt or DownloadFileStem must be set")
 	}
 	return m.d.Download(ctx, opt, sink, stageSaver)
 }

@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"path/filepath"
 	"time"
 
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
@@ -35,10 +36,11 @@ type Asset struct {
 	Quality       string
 	QualityFormat *ies.Format `gorm:"type:json"`
 
-	Downloader     string
-	DownloaderData string
-	DownloadDir    string
-	DownloadFile   string
+	Downloader       string
+	DownloaderData   string
+	DownloadFileDir  string
+	DownloadFileStem string
+	DownloadFileExt  string
 
 	DownloadTotalSize int64
 	DownloadedSize    int64
@@ -47,6 +49,10 @@ type Asset struct {
 
 func (a *Asset) TableName() string {
 	return "assets"
+}
+
+func (a *Asset) FilePath() string {
+	return filepath.Join(a.DownloadFileDir, a.DownloadFileStem+a.DownloadFileExt)
 }
 
 const (

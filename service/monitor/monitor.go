@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/duke-git/lancet/v2/fileutil"
 	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 	_ "github.com/yinyajiang/yt-mnt/pkg/downloader/direct"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
@@ -217,25 +218,35 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality ...string) ([]*
 	return m.saveBundles2Assets(explorer.ie.Name(), bundles, quality...)
 }
 
-func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink downloader.ProgressSink) error {
+func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.ProgressSink) error {
 	asset, err := m.GetAsset(id)
 	if err != nil {
 		return err
 	}
-	modelValue := asset.Model
+	if asset.DownloadFileStem == "" {
+		asset.DownloadFileStem = asset.Title
+	}
+
+	sink := func(total, downloaded, speed int64, percent float64) {
+		asset.DownloadTotalSize = total
+		asset.DownloadedSize = downloaded
+		asset.DownloadPercent = percent
+		if sink_ != nil {
+			sink_(total, downloaded, speed, percent)
+		}
+	}
 
 	d := downloader.GetByName(asset.Downloader)
 
 	ok, err := d.Download(ctx, downloader.DownloadOptions{
-		URL:            asset.URL,
-		Quality:        asset.Quality,
-		DownloadDir:    asset.DownloadDir,
-		DownloadFile:   asset.DownloadFile,
-		DownloadFormat: *asset.QualityFormat,
-		DownloaderData: &asset.DownloaderData,
+		URL:              asset.URL,
+		Quality:          asset.Quality,
+		DownloadFileDir:  asset.DownloadFileDir,
+		DownloadFileStem: &asset.DownloadFileStem,
+		DownloadFileExt:  &asset.DownloadFileExt,
+		DownloadFormat:   *asset.QualityFormat,
+		DownloaderData:   &asset.DownloaderData,
 	}, sink)
-	//防止被修改了
-	asset.Model = modelValue
 	if err != nil {
 		if ok {
 			asset.Status = AssetStatusDownloading
@@ -244,6 +255,8 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink downloader.Pr
 		}
 	} else {
 		asset.Status = AssetStatusFinished
+		asset.DownloadTotalSize, _ = fileutil.FileSize(asset.FilePath())
+		asset.DownloadPercent = 100
 	}
 	if e := m._db.Save(asset).Error; e != nil {
 		log.Printf("db save fail: %s", e)

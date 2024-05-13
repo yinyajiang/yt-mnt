@@ -3,7 +3,6 @@ package direct
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"time"
 
 	"github.com/yinyajiang/yt-mnt/pkg/common"
@@ -27,11 +26,12 @@ func (d *DirectDownloader) Download(ctx context.Context, opt downloader.Download
 		return false, errors.New("no formats available for direct download")
 	}
 	ext := common.URLDotExt(opt.DownloadFormat.URL)
-
-	opt.DownloadFile = filepath.Join(opt.DownloadDir, time.Now().Format("20060102")+ext)
-
+	opt.SetExt(ext)
+	if *opt.DownloadFileStem == "" {
+		opt.SetStem(time.Now().Format("20060102"))
+	}
 	ok = true
-	err = downloadFile(ctx, opt.DownloadFormat.URL, opt.DownloadFile, sink)
+	err = downloadFile(ctx, opt.DownloadFormat.URL, opt.FilePath(), sink)
 	return
 }
 
