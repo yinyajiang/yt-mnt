@@ -89,6 +89,7 @@ func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset
 	if err != nil {
 		return
 	}
+
 	newEntries, err := ie.ExtractAllAfterTime(feed.MediaID, feed.LastUpdate)
 	if err != nil {
 		return
@@ -283,7 +284,7 @@ func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bo
 		bundles = append(bundles, root)
 	}
 	if len(bundles) == 0 {
-		err = fmt.Errorf("no media selected")
+		err = fmt.Errorf("no bundle selected")
 	}
 	return bundles, err
 }
