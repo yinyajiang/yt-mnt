@@ -75,7 +75,7 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 	return &explorer, nil
 }
 
-func (m *Monitor) UpdateFeed(feedid uint, quality string) (newAssets []*Asset, err error) {
+func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset, err error) {
 	var feed Feed
 	err = m._db.First(&feed, &Feed{
 		Model: gorm.Model{
@@ -96,7 +96,7 @@ func (m *Monitor) UpdateFeed(feedid uint, quality string) (newAssets []*Asset, e
 	if len(newEntries) == 0 {
 		return
 	}
-	newAssets, err = m.saveMedia2Assets(feed.IE, newEntries, feed.ID, 0, quality)
+	newAssets, err = m.saveMedia2Assets(feed.IE, newEntries, feed.ID, 0, quality...)
 	if err != nil {
 		return
 	}
