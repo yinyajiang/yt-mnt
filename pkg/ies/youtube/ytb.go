@@ -2,7 +2,6 @@ package youtube
 
 import (
 	"errors"
-	"log"
 	"strings"
 	"time"
 
@@ -19,22 +18,21 @@ func Name() string {
 }
 
 func init() {
-	key := ies.Cfg.Tokens[Name()]
-	if key == "" {
-		log.Fatal(Name() + " token is empty")
-	}
-	client, err := ytbapi.New(key)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	ies.Regist(&YoutubeIE{
-		client: client,
-	})
+	ies.Regist(&YoutubeIE{})
 }
 
 func (y *YoutubeIE) Name() string {
 	return Name()
+}
+
+func (y *YoutubeIE) Init() error {
+	key := ies.Cfg.Tokens[Name()]
+	if key == "" {
+		return errors.New(Name() + " token is empty")
+	}
+	var err error
+	y.client, err = ytbapi.New(key)
+	return err
 }
 
 func (y *YoutubeIE) IsMatched(link string) bool {

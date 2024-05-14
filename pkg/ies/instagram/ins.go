@@ -33,6 +33,15 @@ func (i *InstagramIE) Name() string {
 	return Name()
 }
 
+func (i *InstagramIE) Init() error {
+	key := ies.Cfg.Tokens[Name()]
+	if key == "" {
+		return errors.New(Name() + " token is empty")
+	}
+	i.client = insapi.New(key)
+	return nil
+}
+
 func (i *InstagramIE) IsMatched(link string) bool {
 	return strings.Contains(link, "instagram.com")
 }

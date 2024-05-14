@@ -27,6 +27,7 @@ type InfoExtractor interface {
 	ExtractAllAfterTime(parentMediaID string, afterTime time.Time) ([]*MediaEntry, error)
 	IsMatched(link string) bool
 	Name() string
+	Init() error
 }
 
 var (
@@ -61,4 +62,13 @@ func GetIE(hints ...string) (InfoExtractor, error) {
 		}
 	}
 	return nil, errors.New("no matched IE")
+}
+
+func InitIE() error {
+	for _, ie := range _ies {
+		if err := ie.Init(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

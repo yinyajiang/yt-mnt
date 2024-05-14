@@ -14,26 +14,17 @@ import (
 	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 )
 
-var _proxy string
 var _defclient = &http.Client{
 	Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	},
 }
 
-func SetProxy(p string) {
-	_proxy = p
-}
-
-func Proxy() string {
-	return _proxy
-}
-
 func client() *http.Client {
-	if _proxy == "" {
+	if downloader.Proxy() == "" {
 		return _defclient
 	}
-	proxyUrl, err := url.Parse(_proxy)
+	proxyUrl, err := url.Parse(downloader.Proxy())
 	if err != nil {
 		return _defclient
 	}

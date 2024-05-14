@@ -4,7 +4,6 @@ go 1.20
 
 require (
 	github.com/duke-git/lancet/v2 v2.3.0
-	github.com/pelletier/go-toml/v2 v2.2.1
 	github.com/pkg/errors v0.9.1
 	github.com/tidwall/gjson v1.17.1
 	google.golang.org/api v0.175.0
@@ -28,6 +27,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.17 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	go.opencensus.io v0.24.0 // indirect

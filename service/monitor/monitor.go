@@ -24,7 +24,13 @@ type Monitor struct {
 	preferences Preferences
 }
 
-func NewMonitor(dbpath string, verbose bool) *Monitor {
+func NewMonitor(dbpath string, verbose bool, iecfg ies.IEConfigs) (*Monitor, error) {
+	ies.Cfg = iecfg
+	err := ies.InitIE()
+	if err != nil {
+		return nil, err
+	}
+
 	storage, err := storage.NewStorage(dbpath, verbose,
 		&Feed{},
 		&Asset{},
@@ -32,7 +38,7 @@ func NewMonitor(dbpath string, verbose bool) *Monitor {
 		&Preferences{},
 	)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	m := &Monitor{
@@ -47,7 +53,7 @@ func NewMonitor(dbpath string, verbose bool) *Monitor {
 			DefaultAssetQuality: "best",
 		}
 	}
-	return m
+	return m, nil
 }
 
 func (m *Monitor) Close() {

@@ -75,3 +75,7 @@ func (m *middleInfoExtractor) IsMatched(url string) bool {
 func (m *middleInfoExtractor) Name() string {
 	return m.ie.Name()
 }
+
+func (m *middleInfoExtractor) Init() error {
+	return m.ie.Init()
+}
