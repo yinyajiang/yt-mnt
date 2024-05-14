@@ -24,6 +24,14 @@ type Monitor struct {
 	preferences Preferences
 }
 
+func RegistDownloader(downer downloader.Downloader) {
+	downloader.Regist(downer)
+}
+
+func GetDefaultStageSaver() downloader.DownloaderStageSaver {
+	return downloader.GetDefaultStageSaver()
+}
+
 func NewMonitor(dbpath string, verbose bool, iecfg ies.IEConfigs) (*Monitor, error) {
 	ies.Cfg = iecfg
 	err := ies.InitIE()
