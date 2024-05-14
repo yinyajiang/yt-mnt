@@ -47,11 +47,14 @@ func (opt *DownloadOptions) FilePath() string {
 }
 
 func (opt *DownloadOptions) SetFileName(name string) {
+	if name == "" {
+		return
+	}
 	i := strings.Index(name, ".")
 	if i == -1 || i == 0 || i == len(name)-1 {
 		return
 	}
-	*opt.DownloadFileExt = name[i:]
+	opt.SetExt(name[i:])
 	opt.SetStem(name[:i])
 	if !fileutil.IsExist(opt.FilePath()) {
 		return
@@ -64,6 +67,9 @@ func (opt *DownloadOptions) SetFileName(name string) {
 }
 
 func (opt *DownloadOptions) SetExt(ext string) {
+	if ext == "" {
+		return
+	}
 	if !strings.HasPrefix(ext, ".") {
 		ext = "." + ext
 	}
@@ -71,6 +77,9 @@ func (opt *DownloadOptions) SetExt(ext string) {
 }
 
 func (opt *DownloadOptions) SetStem(stem string) {
+	if stem == "" {
+		return
+	}
 	*opt.DownloadFileStem = common.ReplaceWrongFileChars(stem)
 
 	path := opt.FilePath()
