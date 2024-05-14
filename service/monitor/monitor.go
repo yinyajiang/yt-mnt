@@ -227,12 +227,12 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.P
 		asset.DownloadFileStem = asset.Title
 	}
 
-	sink := func(total, downloaded, speed int64, percent float64) {
+	sink := func(total, downloaded, speed, eta int64, percent float64) {
 		asset.DownloadTotalSize = total
 		asset.DownloadedSize = downloaded
 		asset.DownloadPercent = percent
 		if sink_ != nil {
-			sink_(total, downloaded, speed, percent)
+			sink_(total, downloaded, speed, eta, percent)
 		}
 	}
 
