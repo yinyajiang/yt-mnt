@@ -3,7 +3,6 @@ package direct
 import (
 	"context"
 	"crypto/tls"
-	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 )
 
 var _proxy string
@@ -101,15 +102,17 @@ loop:
 				lastTime = now
 				lastDownloaded = downloaded
 				percent := float64(0)
+				eta := int64(0)
 				if total > 0 {
 					percent = float64(downloaded) / float64(total) * 100
+					eta = int64(float64(total-downloaded) / speed)
 				}
-				sink(total, downloaded, int64(speed), percent)
+				sink(total, downloaded, int64(speed), eta, percent)
 			}
 		}
 	}
 	if sink != nil {
-		sink(total, downloaded, 0, 1)
+		sink(total, downloaded, 0, 0, 100)
 	}
 	return nil
 }
