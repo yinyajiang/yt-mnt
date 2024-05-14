@@ -25,7 +25,7 @@ type Downloader interface {
 		err==nil 表示成功，否则表示失败
 		ok==true 表示是可恢复的失败
 	*/
-	Download(ctx context.Context, opt DownloadOptions, sink ProgressSink, stageSaver ...DownloaderStageSaver) (ok bool, err error)
+	Download(ctx context.Context, opt DownloadOptions, sink ProgressSink) (ok bool, err error)
 }
 
 type DownloadOptions struct {
@@ -106,7 +106,10 @@ func GetByName(name string) Downloader {
 func GetByIE(ie string) Downloader {
 	for _, d := range _downloaders {
 		for _, suportedIE := range d.SupportedIE() {
-			if strings.EqualFold(suportedIE, ie) {
+			if suportedIE == "*" || strings.EqualFold(suportedIE, ie) {
+				return d
+			}
+			if strings.HasPrefix(suportedIE, "!") && !strings.EqualFold(ie, suportedIE[1:]) {
 				return d
 			}
 		}

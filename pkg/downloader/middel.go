@@ -9,17 +9,11 @@ type MiddleDownloader struct {
 	d Downloader
 }
 
-func (m *MiddleDownloader) Download(ctx context.Context, opt DownloadOptions, sink ProgressSink, stageSaver_ ...DownloaderStageSaver) (ok bool, err error) {
-	var stageSaver DownloaderStageSaver
-	if len(stageSaver_) > 0 {
-		stageSaver = stageSaver_[0]
-	} else {
-		stageSaver = &DefaultDownloaderStageSaver{}
-	}
+func (m *MiddleDownloader) Download(ctx context.Context, opt DownloadOptions, sink ProgressSink) (ok bool, err error) {
 	if opt.DownloadFileExt == nil || opt.DownloadFileStem == nil {
 		return false, fmt.Errorf("DownloadFileExt or DownloadFileStem must be set")
 	}
-	return m.d.Download(ctx, opt, sink, stageSaver)
+	return m.d.Download(ctx, opt, sink)
 }
 
 func (m *MiddleDownloader) Name() string {

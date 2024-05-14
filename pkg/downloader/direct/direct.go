@@ -21,7 +21,7 @@ func init() {
 type DirectDownloader struct {
 }
 
-func (d *DirectDownloader) Download(ctx context.Context, opt downloader.DownloadOptions, sink downloader.ProgressSink, stageSaver ...downloader.DownloaderStageSaver) (ok bool, err error) {
+func (d *DirectDownloader) Download(ctx context.Context, opt downloader.DownloadOptions, sink downloader.ProgressSink) (ok bool, err error) {
 	if opt.DownloadFormat.URL == "" {
 		return false, errors.New("no formats available for direct download")
 	}

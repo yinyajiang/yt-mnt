@@ -15,6 +15,12 @@ type DownloaderStageSaver interface {
 	Read(name string) (string, error)
 }
 
+func GetDefaultStageSaver() DownloaderStageSaver {
+	return &DefaultDownloaderStageSaver{
+		stageDir: os.TempDir(),
+	}
+}
+
 type DefaultDownloaderStageSaver struct {
 	stageDir string
 }
