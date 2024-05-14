@@ -29,9 +29,11 @@ type Downloader interface {
 }
 
 type DownloadOptions struct {
-	URL            string
-	Quality        string
-	DownloadFormat ies.Format
+	URL             string
+	Quality         string
+	DownloadFormat  ies.Format
+	DownloadedSize  int64
+	DownloadPercent float64
 
 	DownloadFileDir  string
 	DownloadFileStem *string

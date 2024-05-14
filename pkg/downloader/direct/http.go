@@ -105,7 +105,9 @@ loop:
 				eta := int64(0)
 				if total > 0 {
 					percent = float64(downloaded) / float64(total) * 100
-					eta = int64(float64(total-downloaded) / speed)
+					if speed > 0 {
+						eta = int64(float64(total-downloaded) / speed)
+					}
 				}
 				sink(total, downloaded, int64(speed), eta, percent)
 			}

@@ -228,18 +228,9 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.P
 	}
 
 	sink := func(total, downloaded, speed, eta int64, percent float64) {
-		if percent <= 0 {
-			percent = float64(downloaded) / float64(total) * 100
-		}
-		if total != 0 {
-			asset.DownloadTotalSize = total
-		}
-		if downloaded != 0 {
-			asset.DownloadedSize = downloaded
-		}
-		if percent != 0 {
-			asset.DownloadPercent = percent
-		}
+		asset.DownloadTotalSize = total
+		asset.DownloadedSize = downloaded
+		asset.DownloadPercent = percent
 		if sink_ != nil {
 			sink_(total, downloaded, speed, eta, percent)
 		}
@@ -252,9 +243,12 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.P
 	}
 
 	ok, err := d.Download(ctx, downloader.DownloadOptions{
-		URL:              asset.URL,
-		Quality:          asset.Quality,
-		DownloadFileDir:  asset.DownloadFileDir,
+		URL:             asset.URL,
+		Quality:         asset.Quality,
+		DownloadedSize:  asset.DownloadedSize,
+		DownloadPercent: asset.DownloadPercent,
+		DownloadFileDir: asset.DownloadFileDir,
+
 		DownloadFileStem: &asset.DownloadFileStem,
 		DownloadFileExt:  &asset.DownloadFileExt,
 		DownloadFormat:   qualityFormat,
