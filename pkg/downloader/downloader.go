@@ -99,7 +99,9 @@ func (opt *DownloadOptions) SetStem(stem string) {
 var _downloaders = make(map[string]Downloader)
 
 func Regist(d Downloader) {
-	_downloaders[d.Name()] = d
+	_downloaders[d.Name()] = &MiddleDownloader{
+		d: d,
+	}
 }
 
 func GetByName(name string) Downloader {
