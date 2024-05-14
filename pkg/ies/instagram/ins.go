@@ -2,7 +2,6 @@ package instagram
 
 import (
 	"errors"
-	"log"
 	"strings"
 	"time"
 
@@ -19,14 +18,7 @@ func Name() string {
 }
 
 func init() {
-	key := ies.Cfg.Tokens[Name()]
-	if key == "" {
-		log.Fatal(Name() + " token is empty")
-	}
-	client := insapi.New(key)
-	ies.Regist(&InstagramIE{
-		client: client,
-	})
+	ies.Regist(&InstagramIE{})
 }
 
 func (i *InstagramIE) Name() string {
