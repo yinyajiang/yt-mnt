@@ -45,10 +45,6 @@ func (d *DirectDownloader) Name() string {
 	return Name()
 }
 
-func (d *DirectDownloader) IsAcceptNoPlain() bool {
-	return true
-}
-
 func (m *DirectDownloader) IsNeedFormat() bool {
 	return true
 }
