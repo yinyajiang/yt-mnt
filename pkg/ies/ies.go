@@ -9,6 +9,7 @@ type RootToken struct {
 	LinkID    string
 	MediaID   string
 	MediaType int
+	LinkName  string
 }
 
 type NextPageToken struct {
@@ -64,7 +65,8 @@ func GetIE(hints ...string) (InfoExtractor, error) {
 	return nil, errors.New("no matched IE")
 }
 
-func InitIE() error {
+func InitIE(ieTokens IETokens) error {
+	Cfg.Tokens = ieTokens
 	for _, ie := range _ies {
 		if err := ie.Init(); err != nil {
 			return err

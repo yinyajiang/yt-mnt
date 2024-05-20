@@ -13,6 +13,11 @@ type YoutubeIE struct {
 	client *ytbapi.Client
 }
 
+type YoutubeReserve struct {
+	VideosCount    int64
+	PlaylistsCount int64
+}
+
 func Name() string {
 	return "youtube"
 }
@@ -60,10 +65,14 @@ func (y *YoutubeIE) ParseRoot(link string, _ ...ies.ParseOptions) (*ies.MediaEnt
 	case kindPlaylistGroup:
 		entry, err = y.client.Channel(linkid)
 		if err == nil {
-			entry.Reserve = entry.EntryCount
+			reserve := YoutubeReserve{
+				VideosCount: entry.EntryCount,
+			}
 			entry.EntryCount = 0
 			entry.MediaType = ies.MediaTypePlaylistGroup
 			entry.EntryCount, _ = y.client.ChannelsPlaylistCount(linkid)
+			reserve.PlaylistsCount = entry.EntryCount
+			entry.Reserve = reserve
 		}
 	default:
 		return nil, nil, errors.New("unsupported url type")
@@ -90,7 +99,8 @@ func (y *YoutubeIE) ConvertToUserRoot(rootToken *ies.RootToken, rootInfo *ies.Me
 			return errors.New("invalid reserve count")
 		}
 		rootInfo.MediaType = ies.MediaTypeUser
-		rootInfo.EntryCount, _ = rootInfo.Reserve.(int64)
+		reserve, _ := rootInfo.Reserve.(YoutubeReserve)
+		rootInfo.EntryCount = reserve.VideosCount
 		return nil
 	}
 	return errors.New("unsupported media type for convert to user root")

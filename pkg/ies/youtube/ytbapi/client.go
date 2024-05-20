@@ -41,6 +41,7 @@ func (c *Client) Channel(chnnelID string) (*ies.MediaEntry, error) {
 	if item.Snippet != nil {
 		ret.Title = item.Snippet.Title
 		ret.Description = item.Snippet.Description
+		ret.Uploader = item.Snippet.CustomUrl
 	}
 	if item.Snippet.Thumbnails != nil && item.Snippet.Thumbnails.Default != nil {
 		ret.Thumbnail = item.Snippet.Thumbnails.Default.Url

@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
@@ -24,10 +25,10 @@ const (
 // 每个是一个可下载项
 type Asset struct {
 	gorm.Model
-	OwnerFeedID   uint
-	OwnerBundleID uint
-	Type          int
-	Status        int
+	BundleID    uint `gorm:"index"`
+	BundleTitle string
+	Type        int
+	Status      int
 
 	Title     string
 	Thumbnail string
@@ -45,9 +46,14 @@ type Asset struct {
 	DownloadTotalSize int64
 	DownloadedSize    int64
 	DownloadPercent   float64
+
+	__tabname string
 }
 
 func (a *Asset) TableName() string {
+	if a.__tabname != "" {
+		return a.__tabname
+	}
 	return "assets"
 }
 
@@ -55,42 +61,47 @@ func (a *Asset) FilePath() string {
 	return filepath.Join(a.DownloadFileDir, a.DownloadFileStem+a.DownloadFileExt)
 }
 
+func (a *Asset) NotDotExt() string {
+	if strings.HasPrefix(a.DownloadFileExt, ".") && len(a.DownloadFileExt) > 1 {
+		return a.DownloadFileExt[1:]
+	}
+	return a.DownloadFileExt
+}
+
 const (
-	FeedUser     = "user"
-	FeedPlaylist = "playlist"
+	FeedTypeUser = iota + 1
+	FeedTypePlaylist
 )
 
-type Feed struct {
-	gorm.Model
-	IE string
+const (
+	BundleTypeFeed = iota + 1
+	BundleTypeGeneric
+)
 
-	FeedType string
+type Bundle struct {
+	gorm.Model
+	IE         string
+	BundleType int
+
+	FeedType int `gorm:"index"`
 
 	URL       string `gorm:"index"`
 	MediaID   string
 	Title     string
 	Thumbnail string
+	Uploader  string
 
 	LastUpdate time.Time
-	Assets     []*Asset `gorm:"foreignKey:OwnerFeedID"`
+	AssetCount int64    `gorm:"-"`
+	Assets     []*Asset `gorm:"foreignKey:BundleID"`
+
+	__tabname string
 }
 
-func (f *Feed) TableName() string {
-	return "feeds"
-}
-
-type Bundle struct {
-	gorm.Model
-
-	URL        string
-	Title      string
-	Thumbnail  string
-	UploadDate time.Time
-
-	Assets []*Asset `gorm:"foreignKey:OwnerBundleID"`
-}
-
-func (b *Bundle) TableName() string {
+func (f *Bundle) TableName() string {
+	if f.__tabname != "" {
+		return f.__tabname
+	}
 	return "bundles"
 }
 

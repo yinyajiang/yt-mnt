@@ -15,22 +15,22 @@ type DownloaderStageSaver interface {
 	Read(name string) (string, error)
 }
 
-func GetDefaultStageSaver() DownloaderStageSaver {
-	return &DefaultDownloaderStageSaver{
-		stageDir: os.TempDir(),
+func NewLocalDirStageSaver(stageDir string) DownloaderStageSaver {
+	return &LocalDirStageSaver{
+		stageDir: stageDir,
 	}
 }
 
-type DefaultDownloaderStageSaver struct {
+type LocalDirStageSaver struct {
 	stageDir string
 }
 
-func (s *DefaultDownloaderStageSaver) Delete(name string) error {
+func (s *LocalDirStageSaver) Delete(name string) error {
 	name = correctName(name)
 	return os.Remove(filepath.Join(s.stageDir, name))
 }
 
-func (s *DefaultDownloaderStageSaver) Save(name, data string) (err error) {
+func (s *LocalDirStageSaver) Save(name, data string) (err error) {
 	name = correctName(name)
 	if err = os.MkdirAll(s.stageDir, 0755); err != nil {
 		return err
@@ -46,7 +46,7 @@ func (s *DefaultDownloaderStageSaver) Save(name, data string) (err error) {
 	return
 }
 
-func (s *DefaultDownloaderStageSaver) Read(name string) (string, error) {
+func (s *LocalDirStageSaver) Read(name string) (string, error) {
 	name = correctName(name)
 	f, err := os.Open(filepath.Join(s.stageDir, name))
 	if err != nil {

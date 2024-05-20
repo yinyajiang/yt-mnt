@@ -1,11 +1,21 @@
 package monitor
 
 import (
+	"crypto/md5"
 	"errors"
+	"fmt"
 	"math"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
+
+type selectedType struct {
+	mediaType int
+	allPage   bool
+}
 
 type Explorer struct {
 	ie        ies.InfoExtractor
@@ -17,8 +27,12 @@ type Explorer struct {
 	allPage   []*ies.MediaEntry
 	pageIndex int
 
-	selected []int
-	is_plain bool
+	selecteds     []int
+	selectedTypes []selectedType
+	isPlain       bool
+
+	url  string
+	time time.Time
 }
 
 const (
@@ -46,6 +60,14 @@ func (e *Explorer) Root() *ies.MediaEntry {
 	return &root
 }
 
+func (e *Explorer) CreateTime() time.Time {
+	return e.time
+}
+
+func (e *Explorer) URL() string {
+	return e.url
+}
+
 func (e *Explorer) RootMediaType() int {
 	return e.rootInfo.MediaType
 }
@@ -63,7 +85,10 @@ func (e *Explorer) Page() []*ies.MediaEntry {
 	return e.allPage[e.pageIndex:]
 }
 
-func (e *Explorer) AllPage() []*ies.MediaEntry {
+func (e *Explorer) AllPage(loadLeft ...bool) []*ies.MediaEntry {
+	if len(loadLeft) > 0 && loadLeft[0] {
+		e.ExploreNextAll()
+	}
 	return e.allPage
 }
 
@@ -79,7 +104,7 @@ func (e *Explorer) PageCount() int {
 }
 
 func (e *Explorer) ResetSelected() {
-	e.selected = []int{}
+	e.selecteds = []int{}
 }
 
 func (e *Explorer) Select(indexs ...int) {
@@ -88,19 +113,37 @@ func (e *Explorer) Select(indexs ...int) {
 			continue
 		}
 		if index < 0 {
-			if (len(e.selected) > 0 && e.selected[0] > index) || len(e.selected) == 0 {
-				e.selected = []int{index}
+			if (len(e.selecteds) > 0 && e.selecteds[0] > index) || len(e.selecteds) == 0 {
+				e.selecteds = []int{index}
 			}
 		} else {
-			e.selected = append(e.selected, index)
+			e.selecteds = append(e.selecteds, index)
 		}
-
 	}
 }
 
+func (e *Explorer) SelectMediaType(mediaType int, allPage bool) {
+	e.selectedTypes = append(e.selectedTypes, selectedType{
+		mediaType: mediaType,
+		allPage:   allPage,
+	})
+}
+
 func (e *Explorer) Selected() ([]*ies.MediaEntry, error) {
+	// 筛选类型
+	for _, selectedType := range e.selectedTypes {
+		if selectedType.allPage {
+			e.ExploreNextAll()
+		}
+		for i, entry := range e.allPage {
+			if entry.MediaType == selectedType.mediaType {
+				e.Select(i)
+			}
+		}
+	}
+
 	selected := make([]*ies.MediaEntry, 0)
-	for _, index := range e.selected {
+	for _, index := range e.selecteds {
 		switch index {
 		case IndexCurrentPage:
 			return e.Page(), nil
@@ -119,7 +162,7 @@ func (e *Explorer) Selected() ([]*ies.MediaEntry, error) {
 				ie:        e.ie,
 				rootToken: e.rootToken,
 				rootInfo:  e.rootInfo,
-				selected:  e.selected,
+				selecteds: e.selecteds,
 			}
 			err := e.ie.ConvertToUserRoot(&e.rootToken, &e.rootInfo)
 			if err != nil {
@@ -143,7 +186,7 @@ func (e *Explorer) ExploreNextAll() ([]*ies.MediaEntry, error) {
 }
 
 func (e *Explorer) SetPlain() {
-	e.is_plain = true
+	e.isPlain = true
 	if len(e.allPage) > 0 {
 		old := e.allPage
 		e.allPage = make([]*ies.MediaEntry, 0)
@@ -152,7 +195,7 @@ func (e *Explorer) SetPlain() {
 }
 
 func (e *Explorer) IsPlain() bool {
-	return e.is_plain
+	return e.isPlain
 }
 
 func (e *Explorer) ExporeNextPage() ([]*ies.MediaEntry, error) {
@@ -168,7 +211,7 @@ func (e *Explorer) ExporeNextPage() ([]*ies.MediaEntry, error) {
 	}
 
 	before := len(e.allPage)
-	if e.is_plain {
+	if e.isPlain {
 		plainAppend(&e.allPage, page)
 	} else {
 		e.allPage = append(e.allPage, page...)
@@ -183,8 +226,93 @@ func (e *Explorer) Close() {
 }
 
 func (e *Explorer) firstSelectedIndex() int {
-	if len(e.selected) == 0 {
+	if len(e.selecteds) == 0 {
 		return math.MaxInt
 	}
-	return e.selected[0]
+	return e.selecteds[0]
+}
+
+type ExplorerCacher struct {
+	lock       sync.RWMutex
+	explorers  []*Explorer
+	cacheCount int
+}
+
+func NewExplorerCacher(cacheCount_ ...int) *ExplorerCacher {
+	cacheCount := 10
+	if len(cacheCount_) > 0 {
+		cacheCount = cacheCount_[0]
+	}
+	if cacheCount < 1 {
+		cacheCount = 10
+	}
+	return &ExplorerCacher{
+		lock:       sync.RWMutex{},
+		explorers:  make([]*Explorer, 0),
+		cacheCount: cacheCount,
+	}
+}
+
+func (c *ExplorerCacher) Cache(explorer *Explorer) (handle string) {
+	if explorer == nil {
+		return
+	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	for i, explorer := range c.explorers {
+		if !strings.EqualFold(urlToHandle(explorer.URL()), handle) {
+			continue
+		}
+		explorer.Close()
+		if len(c.explorers) == 1 {
+			c.explorers = make([]*Explorer, 0)
+		} else {
+			c.explorers = append(c.explorers[:i], c.explorers[i+1:]...)
+		}
+		break
+	}
+	if len(c.explorers) > c.cacheCount {
+		c.explorers[0].Close()
+		c.explorers = c.explorers[1:]
+	}
+
+	c.explorers = append(c.explorers, explorer)
+	return urlToHandle(explorer.URL())
+}
+
+func (c *ExplorerCacher) Get(handle string) *Explorer {
+	if handle == "" {
+		return nil
+	}
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	for _, explorer := range c.explorers {
+		if strings.EqualFold(urlToHandle(explorer.URL()), handle) {
+			return explorer
+		}
+	}
+	return nil
+}
+
+func (c *ExplorerCacher) Delete(handle string) {
+	if handle == "" {
+		return
+	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	for i, explorer := range c.explorers {
+		if !strings.EqualFold(urlToHandle(explorer.URL()), handle) {
+			continue
+		}
+		explorer.Close()
+		if len(c.explorers) == 1 {
+			c.explorers = make([]*Explorer, 0)
+		} else {
+			c.explorers = append(c.explorers[:i], c.explorers[i+1:]...)
+		}
+		return
+	}
+}
+func urlToHandle(url string) string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(url)))
 }

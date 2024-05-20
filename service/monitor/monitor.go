@@ -4,45 +4,63 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/duke-git/lancet/v2/fileutil"
+	"github.com/yinyajiang/yt-mnt/pkg/db"
 	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 	_ "github.com/yinyajiang/yt-mnt/pkg/downloader/direct"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 	_ "github.com/yinyajiang/yt-mnt/pkg/ies/instagram"
 	_ "github.com/yinyajiang/yt-mnt/pkg/ies/youtube"
-	"github.com/yinyajiang/yt-mnt/storage"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
+type downloadingStat struct {
+	id       uint
+	bundleID uint
+	cancel   context.CancelFunc
+}
+
 type Monitor struct {
-	storage     *storage.DBStorage
+	storage     *db.DBStorage
 	_db         *gorm.DB
 	preferences Preferences
+
+	lock        sync.RWMutex
+	downloading map[uint]*downloadingStat
 }
 
-func RegistDownloader(downer downloader.Downloader) {
-	downloader.Regist(downer)
+type MonitorOption struct {
+	Verbose          bool
+	IEToken          ies.IETokens
+	AssetTableName   string
+	BundleTableName  string
+	DefaultQuality   string
+	RegistDownloader []downloader.Downloader
+	DBOption         db.DBOption
 }
 
-func GetDefaultStageSaver() downloader.DownloaderStageSaver {
-	return downloader.GetDefaultStageSaver()
-}
-
-func NewMonitor(dbpath string, verbose bool, iecfg ies.IEConfigs) (*Monitor, error) {
-	ies.Cfg = iecfg
-	err := ies.InitIE()
+func NewMonitor(opt MonitorOption) (*Monitor, error) {
+	err := ies.InitIE(opt.IEToken)
 	if err != nil {
 		return nil, err
 	}
 
-	storage, err := storage.NewStorage(dbpath, verbose,
-		&Feed{},
-		&Asset{},
-		&Bundle{},
+	for _, downer := range opt.RegistDownloader {
+		downloader.Regist(downer)
+	}
+
+	storage, err := db.NewStorage(opt.DBOption, opt.Verbose,
+		&Asset{
+			__tabname: opt.AssetTableName,
+		},
+		&Bundle{
+			__tabname: opt.BundleTableName,
+		},
 		&Preferences{},
 	)
 	if err != nil {
@@ -50,8 +68,9 @@ func NewMonitor(dbpath string, verbose bool, iecfg ies.IEConfigs) (*Monitor, err
 	}
 
 	m := &Monitor{
-		storage: storage,
-		_db:     storage.GormDB(),
+		storage:     storage,
+		_db:         storage.GormDB(),
+		downloading: make(map[uint]*downloadingStat),
 	}
 	if e := m._db.First(&m.preferences, Preferences{
 		Name: "default",
@@ -61,11 +80,24 @@ func NewMonitor(dbpath string, verbose bool, iecfg ies.IEConfigs) (*Monitor, err
 			DefaultAssetQuality: "best",
 		}
 	}
+	if opt.DefaultQuality != "" {
+		m.preferences.DefaultAssetQuality = opt.DefaultQuality
+	}
+
 	return m, nil
 }
 
 func (m *Monitor) Close() {
+	m.StopAllDownloading(true)
 	m.storage.Close()
+}
+
+func (m *Monitor) LocalDownloaderStageSaver(dir string) downloader.DownloaderStageSaver {
+	return downloader.NewLocalDirStageSaver(dir)
+}
+
+func (m *Monitor) CreateExplorerCacher(cacheCount ...int) *ExplorerCacher {
+	return NewExplorerCacher(cacheCount...)
 }
 
 func (m *Monitor) SetDefaultQuality(quality string) {
@@ -84,6 +116,8 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 	}
 	var explorer Explorer
 	explorer.ie = ie
+	explorer.url = url
+	explorer.time = time.Now()
 	explorer.rootInfo = *info
 	explorer.rootToken = *rootToken
 	explorer.pageIndex = 0
@@ -91,11 +125,12 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 }
 
 func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset, err error) {
-	var feed Feed
-	err = m._db.First(&feed, &Feed{
+	var feed Bundle
+	err = m._db.First(&feed, &Bundle{
 		Model: gorm.Model{
 			ID: feedid,
 		},
+		BundleType: BundleTypeFeed,
 	}).Error
 	if err != nil {
 		return
@@ -112,11 +147,11 @@ func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset
 	if len(newEntries) == 0 {
 		return
 	}
-	newAssets, err = m.saveMedia2Assets(feed.IE, newEntries, feed.ID, 0, quality...)
+	newAssets, err = m.saveMedia2Assets(feed.IE, newEntries, &feed, quality...)
 	if err != nil {
 		return
 	}
-	err = m._db.Updates(&Feed{
+	err = m._db.Updates(&Bundle{
 		Model: gorm.Model{
 			ID: feedid,
 		},
@@ -125,62 +160,112 @@ func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset
 	return
 }
 
-func (m *Monitor) Unsubscribe(feedid uint) {
-	m._db.Unscoped().Delete(&Feed{
+func (m *Monitor) Unsubscribe(id uint) error {
+	err := m._db.Where(&Bundle{
 		Model: gorm.Model{
-			ID: feedid,
+			ID: id,
 		},
-	})
+	}).Updates(&Bundle{
+		BundleType: BundleTypeGeneric,
+	}).Error
+	return err
+}
+
+func (m *Monitor) DeleteAsset(id uint) {
+	if id <= 0 {
+		return
+	}
+	m.StopDownloading(id, true)
 	m._db.Unscoped().Delete(&Asset{
-		OwnerFeedID: feedid,
+		Model: gorm.Model{
+			ID: id,
+		},
 	})
 }
 
-func (m *Monitor) DeleteBundle(bundleid uint) {
+func (m *Monitor) DeleteBundle(id uint) {
+	if id <= 0 {
+		return
+	}
+	ids := m.allDownloadingBundleAssetID(id)
+	for _, id := range ids {
+		m.StopDownloading(id, true)
+	}
 	m._db.Unscoped().Delete(&Bundle{
 		Model: gorm.Model{
-			ID: bundleid,
+			ID: id,
 		},
 	})
 	m._db.Unscoped().Delete(&Asset{
-		OwnerBundleID: bundleid,
+		BundleID: id,
 	})
 }
 
 func (m *Monitor) Clear() {
-	m._db.Unscoped().Where("1 = 1").Delete(&Feed{})
-	m._db.Unscoped().Where("1 = 1").Delete(&Asset{})
+	m.StopAllDownloading(true)
 	m._db.Unscoped().Where("1 = 1").Delete(&Bundle{})
+	m._db.Unscoped().Where("1 = 1").Delete(&Asset{})
 }
 
-func (m *Monitor) GetFeedDetail(feedid uint) (*Feed, error) {
-	var feed Feed
-	err := m._db.Preload(clause.Associations).First(&feed, Feed{
+func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, error) {
+	var bundle Bundle
+	var tx *gorm.DB
+	if preload {
+		tx = m._db.Preload(clause.Associations)
+	} else {
+		tx = m._db
+	}
+	err := tx.First(&bundle, Bundle{
 		Model: gorm.Model{
-			ID: feedid,
+			ID: id,
 		},
 	}).Error
-	return &feed, err
-}
 
-func (m *Monitor) ListFeeds(preload bool) ([]*Feed, error) {
-	var feeds []*Feed
-	var err error
-	if preload {
-		err = m._db.Preload(clause.Associations).Find(&feeds).Error
-	} else {
-		err = m._db.Find(&feeds).Error
+	if err == nil && assetCount {
+		tx.Model(&Asset{}).Where(&Asset{
+			BundleID: id,
+		}).Count(&bundle.AssetCount)
 	}
-	return feeds, err
+	return &bundle, err
 }
 
-func (m *Monitor) ListBundles(preload bool) ([]*Bundle, error) {
+func (m *Monitor) ListFeedBundles(preload bool, assetCount bool) ([]*Bundle, error) {
+	return m.ListBundlesByWhere(preload, assetCount, &Bundle{
+		BundleType: BundleTypeFeed,
+	})
+}
+
+func (m *Monitor) ListGenericBundles(preload bool, assetCount bool) ([]*Bundle, error) {
+	return m.ListBundlesByWhere(preload, assetCount, &Bundle{
+		BundleType: BundleTypeGeneric,
+	})
+}
+
+func (m *Monitor) ListAllBundles(preload bool, assetCount bool) ([]*Bundle, error) {
+	return m.ListBundlesByWhere(preload, assetCount, nil)
+}
+
+func (m *Monitor) ListBundlesByWhere(preload bool, assetCount bool, where *Bundle) ([]*Bundle, error) {
 	var bundles []*Bundle
 	var err error
+	var tx *gorm.DB
 	if preload {
-		err = m._db.Preload(clause.Associations).Find(&bundles).Error
+		tx = m._db.Preload(clause.Associations)
 	} else {
-		err = m._db.Find(&bundles).Error
+		tx = m._db
+	}
+	if where != nil {
+		err = tx.Find(&bundles, where).Error
+	} else {
+		err = tx.Find(&bundles).Error
+	}
+
+	if err == nil && assetCount {
+		for _, bundle := range bundles {
+			m._db.Model(&Asset{}).Where(&Asset{
+				BundleID: bundle.ID,
+			}).Count(&bundle.AssetCount)
+		}
 	}
 	return bundles, err
 }
@@ -195,7 +280,14 @@ func (m *Monitor) GetAsset(id uint) (*Asset, error) {
 	return &entry, err
 }
 
-func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Feed, error) {
+func (m *Monitor) ListAssets(bundleID uint) (assets []*Asset, err error) {
+	err = m._db.Where(&Asset{
+		BundleID: bundleID,
+	}).Find(&assets).Error
+	return
+}
+
+func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypePlaylist:
 		if explorer.firstSelectedIndex() != IndexRoot {
@@ -210,14 +302,36 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Feed, error) {
 	default:
 		return nil, fmt.Errorf("explored media type unsupported subscribe")
 	}
-	bundles, err := m.selectedBundlesMedia(explorer, false)
+	selectedBundles, err := m.selectedBundlesMedia(explorer, false)
 	if err != nil {
 		return nil, err
 	}
-	return m.saveBundles2Feed(explorer.ie.Name(), bundles)
+
+	var saveBundles []*ies.MediaEntry
+	for _, entry := range selectedBundles {
+		feedType := mediaType2FeedType(entry.MediaType)
+		if feedType == 0 {
+			err = fmt.Errorf("feed unsupported media type: %d", entry.MediaType)
+			continue
+		}
+		var count int64
+		m._db.Where(&Bundle{
+			URL:      entry.URL,
+			FeedType: feedType,
+		}).Count(&count)
+		if count > 0 {
+			err = fmt.Errorf("feed already exists: %s", entry.URL)
+		} else {
+			saveBundles = append(saveBundles, entry)
+		}
+	}
+	if len(saveBundles) == 0 {
+		return nil, err
+	}
+	return m.saveBundles(explorer.ie.Name(), saveBundles, BundleTypeFeed)
 }
 
-func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality ...string) ([]*Bundle, error) {
+func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title string) string, quality ...string) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypeUser:
 		if explorer.firstSelectedIndex() == IndexUser {
@@ -229,10 +343,64 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, quality ...string) ([]*
 	if err != nil {
 		return nil, err
 	}
-	return m.saveBundles2Assets(explorer.ie.Name(), bundles, quality...)
+	if renameBundle != nil {
+		for _, bundle := range bundles {
+			bundle.Title = renameBundle(bundle.Title)
+		}
+	}
+	return m.saveBundles(explorer.ie.Name(), bundles, BundleTypeGeneric, quality...)
 }
 
-func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.ProgressSink) error {
+func (m *Monitor) StopDownloading(id uint, wait bool) {
+	stat, ok := m.getDownloading(id)
+	if ok {
+		stat.cancel()
+	}
+	if wait {
+		for {
+			if _, ok := m.getDownloading(id); !ok {
+				return
+			}
+			time.Sleep(time.Millisecond * 500)
+		}
+	}
+}
+
+func (m *Monitor) StopAllDownloading(wait bool) {
+	m.lock.Lock()
+	for _, stat := range m.downloading {
+		stat.cancel()
+	}
+	m.lock.Unlock()
+	if wait {
+		for {
+			if m.isDownloadingEmpty() {
+				return
+			}
+			time.Sleep(time.Millisecond * 500)
+		}
+	}
+}
+
+func (m *Monitor) StopBundleDownloading(bundleID uint, wait bool) {
+	m.lock.Lock()
+	for _, stat := range m.downloading {
+		if stat.bundleID == bundleID {
+			stat.cancel()
+		}
+	}
+	m.lock.Unlock()
+	if wait {
+		for {
+			if len(m.allDownloadingBundleAssetID(bundleID)) == 0 {
+				return
+			}
+			time.Sleep(time.Millisecond * 500)
+		}
+	}
+}
+
+func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink) error {
 	asset, err := m.GetAsset(id)
 	if err != nil {
 		return err
@@ -240,7 +408,9 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.P
 	if asset.DownloadFileStem == "" {
 		asset.DownloadFileStem = asset.Title
 	}
-
+	if asset.DownloadFileDir == "" {
+		asset.DownloadFileDir = newAssetDir
+	}
 	sink := func(total, downloaded, speed, eta int64, percent float64) {
 		asset.DownloadTotalSize = total
 		asset.DownloadedSize = downloaded
@@ -251,10 +421,23 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, sink_ downloader.P
 	}
 
 	d := downloader.GetByName(asset.Downloader)
+	if d == nil {
+		return fmt.Errorf("downloader not found: %s", asset.Downloader)
+	}
+
 	qualityFormat := ies.Format{}
 	if asset.QualityFormat != nil {
 		qualityFormat = *asset.QualityFormat
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	m.addDownloading(&downloadingStat{
+		id:       asset.ID,
+		bundleID: asset.BundleID,
+		cancel:   cancel,
+	})
+	defer cancel()
+	defer m.removeDownloading(asset.ID)
 
 	ok, err := d.Download(ctx, downloader.DownloadOptions{
 		URL:             asset.URL,
@@ -356,52 +539,36 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles2Feed(ie string, bundles []*ies.MediaEntry) (feeds []*Feed, err error) {
-	feeds = make([]*Feed, 0)
-	for _, bundle := range bundles {
-		feed := &Feed{
-			IE:         ie,
-			URL:        bundle.URL,
-			Title:      bundle.Title,
-			Thumbnail:  bundle.Thumbnail,
-			MediaID:    bundle.MediaID,
-			LastUpdate: time.Now(),
-		}
-		if bundle.MediaType == ies.MediaTypeUser {
-			feed.FeedType = FeedUser
-		} else if bundle.MediaType == ies.MediaTypePlaylist {
-			feed.FeedType = FeedPlaylist
-		} else {
-			err = fmt.Errorf("feed unsupported media type: %d", bundle.MediaType)
-			continue
-		}
-		err = m._db.Create(feed).Error
-		if err == nil {
-			feeds = append(feeds, feed)
-		}
-	}
-	return feeds, err
-}
-
-func (m *Monitor) saveBundles2Assets(ie string, mediaBundles []*ies.MediaEntry, quality ...string) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBundleType int, quality ...string) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
-	for _, mediaBundle := range mediaBundles {
+	for _, entry := range bundleMedias {
 		bundle := &Bundle{
-			URL:        mediaBundle.URL,
-			Title:      mediaBundle.Title,
-			Thumbnail:  mediaBundle.Thumbnail,
-			UploadDate: mediaBundle.UploadDate,
+			IE:         ie,
+			BundleType: saveBundleType,
+			FeedType:   mediaType2FeedType(entry.MediaType),
+			URL:        entry.URL,
+			Title:      entry.Title,
+			Thumbnail:  entry.Thumbnail,
+			MediaID:    entry.MediaID,
+			LastUpdate: time.Now(),
+			Uploader:   entry.Uploader,
+		}
+		if saveBundleType == BundleTypeFeed && bundle.FeedType == 0 {
+			err = fmt.Errorf("feed unsupported media type: %d", entry.MediaType)
+			continue
 		}
 		err = m._db.Create(bundle).Error
 		if err != nil {
 			continue
 		}
-
-		assets, err := m.saveMedia2Assets(ie, mediaBundle.Entries, 0, bundle.ID, quality...)
-		if err == nil {
-			bundle.Assets = assets
-			bundles = append(bundles, bundle)
+		if saveBundleType != BundleTypeFeed {
+			assets, err := m.saveMedia2Assets(ie, entry.Entries, bundle, quality...)
+			if err == nil {
+				bundle.Assets = assets
+				bundle.AssetCount = int64(len(assets))
+			}
 		}
+		bundles = append(bundles, bundle)
 	}
 	if len(bundles) > 0 {
 		err = nil
@@ -409,7 +576,7 @@ func (m *Monitor) saveBundles2Assets(ie string, mediaBundles []*ies.MediaEntry, 
 	return bundles, err
 }
 
-func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, ownerFeedID, ownerBundleID uint, quality_ ...string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, owner *Bundle, quality_ ...string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 	downer := downloader.GetByIE(ie)
@@ -450,20 +617,63 @@ func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, ownerF
 			log.Println(err)
 			continue
 		}
-
-		if ownerFeedID != 0 {
-			asset.OwnerFeedID = ownerFeedID
-		} else if ownerBundleID != 0 {
-			asset.OwnerBundleID = ownerBundleID
+		if owner != nil {
+			asset.BundleTitle = owner.Title
+			asset.BundleID = owner.ID
 		}
-		if e := m._db.Create(asset).Error; e == nil {
+		if err = m._db.Create(asset).Error; err == nil {
 			retAssets = append(retAssets, asset)
-		} else {
-			err = e
 		}
 	}
 	if len(retAssets) > 0 {
 		err = nil
 	}
 	return
+}
+
+func (m *Monitor) addDownloading(stat *downloadingStat) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.downloading[stat.id] = stat
+}
+
+func (m *Monitor) removeDownloading(id uint) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	delete(m.downloading, id)
+}
+
+func (m *Monitor) getDownloading(id uint) (*downloadingStat, bool) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	stat, ok := m.downloading[id]
+	return stat, ok
+}
+
+func (m *Monitor) isDownloadingEmpty() bool {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	return len(m.downloading) == 0
+}
+
+func (m *Monitor) allDownloadingBundleAssetID(bundleID uint) []uint {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	ids := make([]uint, 0, len(m.downloading))
+	for _, stat := range m.downloading {
+		if stat.bundleID == bundleID {
+			ids = append(ids, stat.id)
+		}
+	}
+	return ids
+}
+
+func mediaType2FeedType(mediaType int) int {
+	if mediaType == ies.MediaTypeUser {
+		return FeedTypeUser
+	} else if mediaType == ies.MediaTypePlaylist {
+		return FeedTypePlaylist
+	} else {
+		return 0
+	}
 }

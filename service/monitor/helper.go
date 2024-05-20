@@ -44,9 +44,7 @@ func plainAppend(outAll *[]*ies.MediaEntry, items []*ies.MediaEntry) {
 		*outAll = make([]*ies.MediaEntry, 0, len(items))
 	}
 	for _, item := range items {
-		if item.MediaType == ies.MediaTypeVideo ||
-			item.MediaType == ies.MediaTypeAudio ||
-			item.MediaType == ies.MediaTypeImage {
+		if len(item.Entries) == 0 {
 			*outAll = append(*outAll, item)
 		} else {
 			plainAppend(outAll, item.Entries)

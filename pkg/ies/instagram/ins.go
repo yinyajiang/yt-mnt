@@ -13,6 +13,10 @@ type InstagramIE struct {
 	client *insapi.InstagramApi
 }
 
+type InstagramReserve struct {
+	PostsCount int64
+}
+
 func Name() string {
 	return "instagram"
 }
@@ -53,7 +57,11 @@ func (i *InstagramIE) ParseRoot(link string, _ ...ies.ParseOptions) (*ies.MediaE
 	if err != nil {
 		return nil, nil, err
 	}
+	entry.Uploader = usr
 	entry.MediaType = ies.MediaTypeUser
+	entry.Reserve = InstagramReserve{
+		PostsCount: entry.EntryCount,
+	}
 	return entry, &ies.RootToken{
 		MediaID:   entry.MediaID,
 		MediaType: entry.MediaType,
