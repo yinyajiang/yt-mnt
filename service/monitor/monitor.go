@@ -147,7 +147,7 @@ func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset
 	if len(newEntries) == 0 {
 		return
 	}
-	newAssets, err = m.saveMedia2Assets(feed.IE, newEntries, &feed, quality...)
+	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, quality...)
 	if err != nil {
 		return
 	}
@@ -316,8 +316,9 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 		}
 		var count int64
 		m._db.Where(&Bundle{
-			URL:      entry.URL,
-			FeedType: feedType,
+			URL:        entry.URL,
+			BundleType: BundleTypeFeed,
+			FeedType:   feedType,
 		}).Count(&count)
 		if count > 0 {
 			err = fmt.Errorf("feed already exists: %s", entry.URL)
@@ -562,7 +563,7 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 			continue
 		}
 		if saveBundleType != BundleTypeFeed {
-			assets, err := m.saveMedia2Assets(ie, entry.Entries, bundle, quality...)
+			assets, err := m.saveAssets(ie, entry.Entries, bundle, quality...)
 			if err == nil {
 				bundle.Assets = assets
 				bundle.AssetCount = int64(len(assets))
@@ -576,7 +577,7 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 	return bundles, err
 }
 
-func (m *Monitor) saveMedia2Assets(ie string, entryies []*ies.MediaEntry, owner *Bundle, quality_ ...string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, quality_ ...string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 	downer := downloader.GetByIE(ie)

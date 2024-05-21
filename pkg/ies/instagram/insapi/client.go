@@ -220,8 +220,10 @@ func parseMediaInfo(item gjson.Result) ies.MediaEntry {
 		Title:       item.Get("caption.text").String(),
 		Description: item.Get("caption.text").String(),
 		Thumbnail:   item.Get("thumbnail_url").String(),
-		URL:         "https://www.instagram.com/p/" + item.Get("code").String(),
 		UploadDate:  time.Unix(item.Get("taken_at").Int(), 0),
+	}
+	if code := item.Get("code").String(); code != "" {
+		media.URL = "https://www.instagram.com/p/" + code
 	}
 	if media.Title == "" {
 		media.Title = item.Get("Post by ").String() + user
@@ -262,6 +264,9 @@ func parseMediaInfo(item gjson.Result) ies.MediaEntry {
 		media.MediaType = ies.MediaTypeCarousel
 		for _, subitem := range item.Get("carousel_media").Array() {
 			subentry := parseMediaInfo(subitem)
+			if subentry.URL == "" {
+				subentry.URL = media.URL
+			}
 			media.Entries = append(media.Entries, &subentry)
 		}
 	}

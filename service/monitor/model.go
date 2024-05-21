@@ -81,9 +81,8 @@ const (
 type Bundle struct {
 	gorm.Model
 	IE         string
-	BundleType int
-
-	FeedType int `gorm:"index"`
+	BundleType int `gorm:"index"`
+	FeedType   int `gorm:"index"`
 
 	URL       string `gorm:"index"`
 	MediaID   string
