@@ -47,12 +47,12 @@ type Asset struct {
 	DownloadedSize    int64
 	DownloadPercent   float64
 
-	__tabname string
+	_tabname string
 }
 
 func (a *Asset) TableName() string {
-	if a.__tabname != "" {
-		return a.__tabname
+	if a._tabname != "" {
+		return a._tabname
 	}
 	return "assets"
 }
@@ -94,12 +94,12 @@ type Bundle struct {
 	AssetCount int64    `gorm:"-"`
 	Assets     []*Asset `gorm:"foreignKey:BundleID"`
 
-	__tabname string
+	_tabname string
 }
 
 func (f *Bundle) TableName() string {
-	if f.__tabname != "" {
-		return f.__tabname
+	if f._tabname != "" {
+		return f._tabname
 	}
 	return "bundles"
 }

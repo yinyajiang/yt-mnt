@@ -55,10 +55,10 @@ func NewMonitor(opt MonitorOption) (*Monitor, error) {
 
 	storage, err := db.NewStorage(opt.DBOption, opt.Verbose,
 		&Asset{
-			__tabname: opt.AssetTableName,
+			_tabname: opt.AssetTableName,
 		},
 		&Bundle{
-			__tabname: opt.BundleTableName,
+			_tabname: opt.BundleTableName,
 		},
 	)
 	if err != nil {
@@ -182,10 +182,24 @@ func (m *Monitor) DeleteBundle(id uint) {
 	})
 }
 
-func (m *Monitor) Clear() {
-	m.StopAllDownloading(true)
-	m._db.Unscoped().Where("1 = 1").Delete(&Bundle{})
-	m._db.Unscoped().Where("1 = 1").Delete(&Asset{})
+func (m *Monitor) Clear(indludeSubscrption bool) []uint {
+	deleted := []uint{}
+	if indludeSubscrption {
+		m.StopAllDownloading(true)
+		bundles, _ := m.ListBundles(false, false, true)
+		for _, bundle := range bundles {
+			deleted = append(deleted, bundle.ID)
+		}
+		m._db.Unscoped().Where("1 = 1").Delete(&Bundle{})
+		m._db.Unscoped().Where("1 = 1").Delete(&Asset{})
+	} else {
+		bundles, _ := m.ListBundles(false, false, false)
+		for _, bundle := range bundles {
+			deleted = append(deleted, bundle.ID)
+			m.DeleteBundle(bundle.ID)
+		}
+	}
+	return deleted
 }
 
 func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, error) {
@@ -216,14 +230,13 @@ func (m *Monitor) ListFeedBundles(preload bool, assetCount bool) ([]*Bundle, err
 	})
 }
 
-func (m *Monitor) ListGenericBundles(preload bool, assetCount bool) ([]*Bundle, error) {
+func (m *Monitor) ListBundles(preload bool, assetCount bool, includeSubscrption bool) ([]*Bundle, error) {
+	if includeSubscrption {
+		return m.ListBundlesByWhere(preload, assetCount, nil)
+	}
 	return m.ListBundlesByWhere(preload, assetCount, &Bundle{
 		BundleType: BundleTypeGeneric,
 	})
-}
-
-func (m *Monitor) ListAllBundles(preload bool, assetCount bool) ([]*Bundle, error) {
-	return m.ListBundlesByWhere(preload, assetCount, nil)
 }
 
 func (m *Monitor) ListBundlesByWhere(preload bool, assetCount bool, where *Bundle) ([]*Bundle, error) {
