@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/duke-git/lancet/v2/slice"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
 
@@ -140,6 +141,10 @@ func (e *Explorer) Selected() ([]*ies.MediaEntry, error) {
 				e.Select(i)
 			}
 		}
+	}
+
+	if len(e.selecteds) != 0 {
+		e.selecteds = slice.Unique(e.selecteds)
 	}
 
 	selected := make([]*ies.MediaEntry, 0)

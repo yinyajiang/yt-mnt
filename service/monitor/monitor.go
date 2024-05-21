@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/duke-git/lancet/v2/fileutil"
+	"github.com/yinyajiang/yt-mnt/pkg/common"
 	"github.com/yinyajiang/yt-mnt/pkg/db"
 	"github.com/yinyajiang/yt-mnt/pkg/downloader"
 	_ "github.com/yinyajiang/yt-mnt/pkg/downloader/direct"
@@ -26,9 +27,8 @@ type downloadingStat struct {
 }
 
 type Monitor struct {
-	storage     *db.DBStorage
-	_db         *gorm.DB
-	preferences Preferences
+	storage *db.DBStorage
+	_db     *gorm.DB
 
 	lock        sync.RWMutex
 	downloading map[uint]*downloadingStat
@@ -39,7 +39,6 @@ type MonitorOption struct {
 	IEToken          ies.IETokens
 	AssetTableName   string
 	BundleTableName  string
-	DefaultQuality   string
 	RegistDownloader []downloader.Downloader
 	DBOption         db.DBOption
 }
@@ -61,7 +60,6 @@ func NewMonitor(opt MonitorOption) (*Monitor, error) {
 		&Bundle{
 			__tabname: opt.BundleTableName,
 		},
-		&Preferences{},
 	)
 	if err != nil {
 		return nil, err
@@ -72,18 +70,6 @@ func NewMonitor(opt MonitorOption) (*Monitor, error) {
 		_db:         storage.GormDB(),
 		downloading: make(map[uint]*downloadingStat),
 	}
-	if e := m._db.First(&m.preferences, Preferences{
-		Name: "default",
-	}).Error; e != nil {
-		m.preferences = Preferences{
-			Name:                "default",
-			DefaultAssetQuality: "best",
-		}
-	}
-	if opt.DefaultQuality != "" {
-		m.preferences.DefaultAssetQuality = opt.DefaultQuality
-	}
-
 	return m, nil
 }
 
@@ -98,11 +84,6 @@ func (m *Monitor) LocalDownloaderStageSaver(dir string) downloader.DownloaderSta
 
 func (m *Monitor) CreateExplorerCacher(cacheCount ...int) *ExplorerCacher {
 	return NewExplorerCacher(cacheCount...)
-}
-
-func (m *Monitor) SetDefaultQuality(quality string) {
-	m.preferences.DefaultAssetQuality = quality
-	m._db.Save(&m.preferences)
 }
 
 func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, error) {
@@ -124,7 +105,7 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 	return &explorer, nil
 }
 
-func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset, err error) {
+func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Asset, err error) {
 	var feed Bundle
 	err = m._db.First(&feed, &Bundle{
 		Model: gorm.Model{
@@ -147,7 +128,7 @@ func (m *Monitor) UpdateFeed(feedid uint, quality ...string) (newAssets []*Asset
 	if len(newEntries) == 0 {
 		return
 	}
-	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, quality...)
+	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, dir, quality)
 	if err != nil {
 		return
 	}
@@ -329,10 +310,10 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 	if len(saveBundles) == 0 {
 		return nil, err
 	}
-	return m.saveBundles(explorer.ie.Name(), saveBundles, BundleTypeFeed)
+	return m.saveBundles(explorer.ie.Name(), saveBundles, BundleTypeFeed, "", "")
 }
 
-func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title string) string, quality ...string) ([]*Bundle, error) {
+func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title string) string, dir, quality string) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypeUser:
 		if explorer.firstSelectedIndex() == IndexUser {
@@ -349,7 +330,7 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title
 			bundle.Title = renameBundle(bundle.Title)
 		}
 	}
-	return m.saveBundles(explorer.ie.Name(), bundles, BundleTypeGeneric, quality...)
+	return m.saveBundles(explorer.ie.Name(), bundles, BundleTypeGeneric, dir, quality)
 }
 
 func (m *Monitor) StopDownloading(id uint, wait bool) {
@@ -401,10 +382,10 @@ func (m *Monitor) StopBundleDownloading(bundleID uint, wait bool) {
 	}
 }
 
-func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink) error {
+func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink) (*Asset, error) {
 	asset, err := m.GetAsset(id)
 	if err != nil {
-		return err
+		return asset, err
 	}
 	if asset.DownloadFileStem == "" {
 		asset.DownloadFileStem = asset.Title
@@ -412,6 +393,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	if asset.DownloadFileDir == "" {
 		asset.DownloadFileDir = newAssetDir
 	}
+
 	sink := func(total, downloaded, speed, eta int64, percent float64) {
 		asset.DownloadTotalSize = total
 		asset.DownloadedSize = downloaded
@@ -423,7 +405,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 
 	d := downloader.GetByName(asset.Downloader)
 	if d == nil {
-		return fmt.Errorf("downloader not found: %s", asset.Downloader)
+		return asset, fmt.Errorf("downloader not found: %s", asset.Downloader)
 	}
 
 	qualityFormat := ies.Format{}
@@ -466,7 +448,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	if e := m._db.Save(asset).Error; e != nil {
 		log.Printf("db save fail: %s", e)
 	}
-	return err
+	return asset, err
 }
 
 func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bool) ([]*ies.MediaEntry, error) {
@@ -540,7 +522,7 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBundleType int, quality ...string) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
 	for _, entry := range bundleMedias {
 		bundle := &Bundle{
@@ -563,7 +545,7 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 			continue
 		}
 		if saveBundleType != BundleTypeFeed {
-			assets, err := m.saveAssets(ie, entry.Entries, bundle, quality...)
+			assets, err := m.saveAssets(ie, entry.Entries, bundle, dir, quality)
 			if err == nil {
 				bundle.Assets = assets
 				bundle.AssetCount = int64(len(assets))
@@ -577,15 +559,17 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 	return bundles, err
 }
 
-func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, quality_ ...string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, dir, quality string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 	downer := downloader.GetByIE(ie)
 
-	quality := m.preferences.DefaultAssetQuality
-	if len(quality_) != 0 {
-		quality = quality_[0]
+	if quality == "" {
+		quality = "best"
 	}
+
+	lastBeginStem := ""
+	stemSuffIndex := 1
 	for _, entry := range entryies {
 		var qualityFormat *ies.Format
 		if downer.IsNeedFormat() {
@@ -604,7 +588,8 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 			Thumbnail:     entry.Thumbnail,
 			QualityFormat: qualityFormat,
 
-			Downloader: downer.Name(),
+			DownloadFileDir: dir,
+			Downloader:      downer.Name(),
 		}
 		switch entry.MediaType {
 		case ies.MediaTypeVideo:
@@ -618,10 +603,41 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 			log.Println(err)
 			continue
 		}
+		if asset.Title == "" {
+			if owner != nil {
+				asset.Title = owner.IE + "(" + time.Now().Format("2006-01-02 15-04-05") + ")"
+			} else {
+				asset.Title = time.Now().Format("2006-01-02 15-04-05")
+			}
+		}
+
 		if owner != nil {
 			asset.BundleTitle = owner.Title
 			asset.BundleID = owner.ID
 		}
+
+		stem := common.ReplaceWrongFileChars(asset.Title)
+		if len(stem) > 100 {
+			stem = stem[:100]
+		}
+		if stem != lastBeginStem {
+			lastBeginStem = stem
+			stemSuffIndex = 1
+			var count int64
+			m._db.Where(&Asset{
+				DownloadFileDir:  dir,
+				DownloadFileStem: stem,
+			}).Count(&count)
+			if count > 0 {
+				stem = fmt.Sprintf("%s(%d)", stem, stemSuffIndex)
+				stemSuffIndex++
+			}
+		} else {
+			stem = fmt.Sprintf("%s(%d)", stem, stemSuffIndex)
+			stemSuffIndex++
+		}
+
+		asset.DownloadFileStem = stem
 		if err = m._db.Create(asset).Error; err == nil {
 			retAssets = append(retAssets, asset)
 		}

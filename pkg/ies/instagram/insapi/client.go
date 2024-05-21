@@ -267,8 +267,17 @@ func parseMediaInfo(item gjson.Result) ies.MediaEntry {
 			if subentry.URL == "" {
 				subentry.URL = media.URL
 			}
+			if subentry.Title == "" {
+				subentry.Title = media.Title
+			}
 			media.Entries = append(media.Entries, &subentry)
 		}
+	}
+	if media.Title == "" {
+		media.Title = media.UploadDate.Format("2006-01-02 15-04-05")
+	}
+	if media.Title == "" {
+		media.Title = media.MediaID
 	}
 	return media
 }

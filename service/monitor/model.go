@@ -39,8 +39,8 @@ type Asset struct {
 
 	Downloader       string
 	DownloaderData   string
-	DownloadFileDir  string
-	DownloadFileStem string
+	DownloadFileDir  string `gorm:"index"`
+	DownloadFileStem string `gorm:"index"`
 	DownloadFileExt  string
 
 	DownloadTotalSize int64
@@ -102,10 +102,4 @@ func (f *Bundle) TableName() string {
 		return f.__tabname
 	}
 	return "bundles"
-}
-
-type Preferences struct {
-	gorm.Model
-	Name                string `gorm:"unique"`
-	DefaultAssetQuality string
 }
