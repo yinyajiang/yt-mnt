@@ -39,8 +39,8 @@ type Asset struct {
 
 	Downloader       string
 	DownloaderData   string
-	DownloadFileDir  string `gorm:"index"`
-	DownloadFileStem string `gorm:"index"`
+	DownloadFileDir  string
+	DownloadFileStem string
 	DownloadFileExt  string
 
 	DownloadTotalSize int64

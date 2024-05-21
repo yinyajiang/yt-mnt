@@ -623,15 +623,6 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 		if stem != lastBeginStem {
 			lastBeginStem = stem
 			stemSuffIndex = 1
-			var count int64
-			m._db.Where(&Asset{
-				DownloadFileDir:  dir,
-				DownloadFileStem: stem,
-			}).Count(&count)
-			if count > 0 {
-				stem = fmt.Sprintf("%s(%d)", stem, stemSuffIndex)
-				stemSuffIndex++
-			}
 		} else {
 			stem = fmt.Sprintf("%s(%d)", stem, stemSuffIndex)
 			stemSuffIndex++
