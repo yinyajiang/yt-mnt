@@ -33,6 +33,11 @@ type Monitor struct {
 	lock                               sync.RWMutex
 	downloading                        map[uint]*downloadingStat
 	externalDownloadingStatManagerFunc ExternalDownloadingStatManagerFunc
+
+	_lastBundle           Bundle
+	_lastBundleDirty      bool
+	_lastBundlePreload    bool
+	_lastBundleAssetCount bool
 }
 
 type MonitorOption struct {
@@ -112,6 +117,16 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 	return &explorer, nil
 }
 
+func (m *Monitor) SubscribeURL(url string) ([]*Bundle, error) {
+	explorer, err := m.OpenExplorer(url)
+	if err != nil {
+		return nil, err
+	}
+	defer explorer.Close()
+	explorer.Select(IndexRoot)
+	return m.SubscribeSelected(explorer)
+}
+
 func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Asset, err error) {
 	var feed Bundle
 	err = m._db.First(&feed, &Bundle{
@@ -140,6 +155,10 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Ass
 		return
 	}
 
+	if m._lastBundle.ID == feedid {
+		m._lastBundleDirty = true
+	}
+
 	err = m.storage.Updates(&Bundle{
 		Model: gorm.Model{
 			ID: feedid,
@@ -165,6 +184,7 @@ func (m *Monitor) DeleteAsset(id uint) {
 		return
 	}
 	m.StopDownloading(id, true)
+	m._lastBundleDirty = true
 
 	m.storage.Delete(&Asset{
 		Model: gorm.Model{
@@ -215,13 +235,30 @@ func (m *Monitor) Clear(indludeSubscrption bool) []uint {
 
 func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, error) {
 	var bundle Bundle
+	var err error
+
+	if !m._lastBundleDirty && m._lastBundle.ID == id && m._lastBundlePreload == preload &&
+		(m._lastBundleAssetCount || !assetCount) {
+		bundle = m._lastBundle
+		return &bundle, nil
+	}
+
+	defer func() {
+		if bundle.ID > 0 && err == nil {
+			m._lastBundleDirty = false
+			m._lastBundle = bundle
+			m._lastBundlePreload = preload
+			m._lastBundleAssetCount = assetCount
+		}
+	}()
+
 	var tx *gorm.DB
 	if preload {
 		tx = m._db.Preload(clause.Associations)
 	} else {
 		tx = m._db
 	}
-	err := tx.First(&bundle, Bundle{
+	err = tx.First(&bundle, Bundle{
 		Model: gorm.Model{
 			ID: id,
 		},
@@ -313,28 +350,37 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 	}
 
 	var saveBundles []*ies.MediaEntry
+	var existBundles []*Bundle
 	for _, entry := range selectedBundles {
 		feedType := mediaType2FeedType(entry.MediaType)
 		if feedType == 0 {
 			err = fmt.Errorf("feed unsupported media type: %d", entry.MediaType)
 			continue
 		}
-		var count int64
-		m._db.Where(&Bundle{
+		var exist Bundle
+		if m._db.First(&exist, &Bundle{
 			URL:        entry.URL,
 			BundleType: BundleTypeFeed,
 			FeedType:   feedType,
-		}).Count(&count)
-		if count > 0 {
-			err = fmt.Errorf("feed already exists: %s", entry.URL)
+		}).Error == nil {
+			existBundles = append(existBundles, &exist)
 		} else {
 			saveBundles = append(saveBundles, entry)
 		}
 	}
 	if len(saveBundles) == 0 {
+		if len(existBundles) != 0 {
+			err = fmt.Errorf("feed already exists")
+		}
+		return existBundles, err
+	}
+
+	result, err := m.saveBundles(explorer.ie.Name(), saveBundles, BundleTypeFeed, "", "")
+	if err != nil {
 		return nil, err
 	}
-	return m.saveBundles(explorer.ie.Name(), saveBundles, BundleTypeFeed, "", "")
+	result = append(result, existBundles...)
+	return result, nil
 }
 
 func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title string) string, dir, quality string) ([]*Bundle, error) {
