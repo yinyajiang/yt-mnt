@@ -30,17 +30,19 @@ type Monitor struct {
 	storage *db.DBStorage
 	_db     *gorm.DB
 
-	lock        sync.RWMutex
-	downloading map[uint]*downloadingStat
+	lock                               sync.RWMutex
+	downloading                        map[uint]*downloadingStat
+	externalDownloadingStatManagerFunc ExternalDownloadingStatManagerFunc
 }
 
 type MonitorOption struct {
-	Verbose          bool
-	IEToken          ies.IETokens
-	AssetTableName   string
-	BundleTableName  string
-	RegistDownloader []downloader.Downloader
-	DBOption         db.DBOption
+	Verbose                            bool
+	IEToken                            ies.IETokens
+	AssetTableName                     string
+	BundleTableName                    string
+	RegistDownloader                   []downloader.Downloader
+	DBOption                           db.DBOption
+	ExternalDownloadingStatManagerFunc ExternalDownloadingStatManagerFunc
 }
 
 func NewMonitor(opt MonitorOption) (*Monitor, error) {
@@ -66,11 +68,16 @@ func NewMonitor(opt MonitorOption) (*Monitor, error) {
 	}
 
 	m := &Monitor{
-		storage:     storage,
-		_db:         storage.GormDB(),
-		downloading: make(map[uint]*downloadingStat),
+		storage:                            storage,
+		_db:                                storage.GormDB(),
+		downloading:                        make(map[uint]*downloadingStat),
+		externalDownloadingStatManagerFunc: opt.ExternalDownloadingStatManagerFunc,
 	}
 	return m, nil
+}
+
+func (m *Monitor) SetExternalDownloadingStatManagerFunc(f ExternalDownloadingStatManagerFunc) {
+	m.externalDownloadingStatManagerFunc = f
 }
 
 func (m *Monitor) Close() {
@@ -369,7 +376,7 @@ func (m *Monitor) StopAllDownloading(wait bool) {
 	m.lock.Unlock()
 	if wait {
 		for {
-			if m.isDownloadingEmpty() {
+			if m.getDownloadingCount() == 0 {
 				return
 			}
 			time.Sleep(time.Millisecond * 500)
@@ -405,6 +412,24 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	}
 	if asset.DownloadFileDir == "" {
 		asset.DownloadFileDir = newAssetDir
+	}
+	if asset.Status == AssetStatusFinished {
+		if fileutil.IsExist(asset.FilePath()) {
+			return asset, nil
+		} else {
+			asset.Status = AssetStatusDownloading
+		}
+	}
+
+	if m.externalDownloadingStatManagerFunc.GetExternalDownloadingCount != nil &&
+		m.externalDownloadingStatManagerFunc.GetMaxConcurrentCount != nil {
+		max := m.externalDownloadingStatManagerFunc.GetMaxConcurrentCount()
+		if max > 0 {
+			left := max - m.externalDownloadingStatManagerFunc.GetExternalDownloadingCount() - m.getDownloadingCount()
+			if left <= 0 {
+				return asset, m.externalDownloadingStatManagerFunc.OverMaxConcurrentErr
+			}
+		}
 	}
 
 	sink := func(total, downloaded, speed, eta int64, percent float64) {
@@ -462,6 +487,19 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		log.Printf("db save fail: %s", e)
 	}
 	return asset, err
+}
+
+func (m *Monitor) GetDownloadingStatFunc() (
+	GetDownloadingCount func() int,
+	StopAllDownloading func(),
+) {
+	GetDownloadingCount = func() int {
+		return m.getDownloadingCount()
+	}
+	StopAllDownloading = func() {
+		m.StopAllDownloading(true)
+	}
+	return
 }
 
 func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bool) ([]*ies.MediaEntry, error) {
@@ -671,10 +709,10 @@ func (m *Monitor) getDownloading(id uint) (*downloadingStat, bool) {
 	return stat, ok
 }
 
-func (m *Monitor) isDownloadingEmpty() bool {
+func (m *Monitor) getDownloadingCount() int {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	return len(m.downloading) == 0
+	return len(m.downloading)
 }
 
 func (m *Monitor) allDownloadingBundleAssetID(bundleID uint) []uint {

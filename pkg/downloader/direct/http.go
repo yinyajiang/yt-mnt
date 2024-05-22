@@ -112,10 +112,15 @@ loop:
 
 func downloadFile(ctx context.Context, url, path string, sink downloader.ProgressSink) (err error) {
 	os.MkdirAll(filepath.Dir(path), os.ModePerm)
-	f, err := os.Create(path)
+	downingPath := path + ".downing"
+	f, err := os.Create(downingPath)
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	return downloadW(ctx, url, f, sink)
+	err = downloadW(ctx, url, f, sink)
+	f.Close()
+	if err == nil {
+		os.Rename(downingPath, path)
+	}
+	return err
 }

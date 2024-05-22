@@ -103,3 +103,9 @@ func (f *Bundle) TableName() string {
 	}
 	return "bundles"
 }
+
+type ExternalDownloadingStatManagerFunc struct {
+	GetMaxConcurrentCount       func() int
+	GetExternalDownloadingCount func() int
+	OverMaxConcurrentErr        error
+}
