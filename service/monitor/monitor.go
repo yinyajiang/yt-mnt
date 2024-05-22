@@ -139,23 +139,24 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Ass
 	if err != nil {
 		return
 	}
-	err = m._db.Updates(&Bundle{
+
+	err = m.storage.Updates(&Bundle{
 		Model: gorm.Model{
 			ID: feedid,
 		},
 		LastUpdate: time.Now(),
-	}).Error
+	})
 	return
 }
 
 func (m *Monitor) Unsubscribe(id uint) error {
-	err := m._db.Where(&Bundle{
+	err := m.storage.WhereUpdates(&Bundle{
 		Model: gorm.Model{
 			ID: id,
 		},
-	}).Updates(&Bundle{
+	}, &Bundle{
 		BundleType: BundleTypeGeneric,
-	}).Error
+	})
 	return err
 }
 
@@ -164,7 +165,8 @@ func (m *Monitor) DeleteAsset(id uint) {
 		return
 	}
 	m.StopDownloading(id, true)
-	m._db.Unscoped().Delete(&Asset{
+
+	m.storage.Delete(&Asset{
 		Model: gorm.Model{
 			ID: id,
 		},
@@ -179,12 +181,13 @@ func (m *Monitor) DeleteBundle(id uint) {
 	for _, id := range ids {
 		m.StopDownloading(id, true)
 	}
-	m._db.Unscoped().Delete(&Bundle{
+
+	m.storage.Delete(&Bundle{
 		Model: gorm.Model{
 			ID: id,
 		},
 	})
-	m._db.Unscoped().Delete(&Asset{
+	m.storage.Delete(&Asset{
 		BundleID: id,
 	})
 }
@@ -197,8 +200,9 @@ func (m *Monitor) Clear(indludeSubscrption bool) []uint {
 		for _, bundle := range bundles {
 			deleted = append(deleted, bundle.ID)
 		}
-		m._db.Unscoped().Where("1 = 1").Delete(&Bundle{})
-		m._db.Unscoped().Where("1 = 1").Delete(&Asset{})
+
+		m.storage.DeleteAll(&Bundle{})
+		m.storage.DeleteAll(&Asset{})
 	} else {
 		bundles, _ := m.ListBundles(false, false, false)
 		for _, bundle := range bundles {
@@ -483,7 +487,8 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		asset.DownloadTotalSize, _ = fileutil.FileSize(asset.FilePath())
 		asset.DownloadPercent = 100
 	}
-	if e := m._db.Save(asset).Error; e != nil {
+
+	if e := m.storage.Save(asset); e != nil {
 		log.Printf("db save fail: %s", e)
 	}
 	return asset, err
@@ -576,6 +581,11 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
 	for _, entry := range bundleMedias {
+		if m.storage.IsClosed() {
+			err = fmt.Errorf("closed")
+			break
+		}
+
 		bundle := &Bundle{
 			IE:         ie,
 			BundleType: saveBundleType,
@@ -591,7 +601,8 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 			err = fmt.Errorf("feed unsupported media type: %d", entry.MediaType)
 			continue
 		}
-		err = m._db.Create(bundle).Error
+
+		err = m.storage.Create(bundle)
 		if err != nil {
 			continue
 		}
@@ -622,6 +633,11 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 	lastBeginStem := ""
 	stemSuffIndex := 1
 	for _, entry := range entryies {
+		if m.storage.IsClosed() {
+			err = fmt.Errorf("closed")
+			break
+		}
+
 		var qualityFormat *ies.Format
 		if downer.IsNeedFormat() {
 			if len(entry.Formats) == 0 {
@@ -680,7 +696,8 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 		}
 
 		asset.DownloadFileStem = stem
-		if err = m._db.Create(asset).Error; err == nil {
+
+		if err = m.storage.Create(asset); err == nil {
 			retAssets = append(retAssets, asset)
 		}
 	}

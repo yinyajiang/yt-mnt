@@ -3,6 +3,7 @@ package db
 import (
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"path/filepath"
@@ -15,6 +16,9 @@ import (
 type DBStorage struct {
 	db         *gorm.DB
 	notCloseDB bool
+
+	_isClosed       bool
+	_dbWriteOperate sync.WaitGroup
 }
 
 type DBOption struct {
@@ -64,9 +68,52 @@ func (d *DBStorage) Close() {
 	if d.notCloseDB {
 		return
 	}
+	d._isClosed = true
+	d._dbWriteOperate.Wait()
+
 	sqlDB, err := d.db.DB()
 	if err != nil {
 		return
 	}
 	sqlDB.Close()
+}
+
+func (d *DBStorage) IsClosed() bool {
+	return d._isClosed
+}
+
+func (d *DBStorage) Delete(value interface{}, conds ...interface{}) error {
+	d._dbWriteOperate.Add(1)
+	defer d._dbWriteOperate.Done()
+	return d.db.Unscoped().Delete(value, conds...).Error
+}
+
+func (d *DBStorage) DeleteAll(value interface{}) error {
+	d._dbWriteOperate.Add(1)
+	defer d._dbWriteOperate.Done()
+	return d.db.Unscoped().Where("1 = 1").Delete(value).Error
+}
+
+func (d *DBStorage) Save(value interface{}) error {
+	d._dbWriteOperate.Add(1)
+	defer d._dbWriteOperate.Done()
+	return d.db.Save(value).Error
+}
+
+func (d *DBStorage) Create(value interface{}) error {
+	d._dbWriteOperate.Add(1)
+	defer d._dbWriteOperate.Done()
+	return d.db.Create(value).Error
+}
+
+func (d *DBStorage) Updates(values interface{}) error {
+	d._dbWriteOperate.Add(1)
+	defer d._dbWriteOperate.Done()
+	return d.db.Updates(values).Error
+}
+
+func (d *DBStorage) WhereUpdates(where interface{}, values interface{}) error {
+	d._dbWriteOperate.Add(1)
+	defer d._dbWriteOperate.Done()
+	return d.db.Where(where).Updates(values).Error
 }
