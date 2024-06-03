@@ -36,6 +36,7 @@ type Asset struct {
 	URL           string
 	Quality       string
 	QualityFormat *ies.Format `gorm:"type:json"`
+	AudioFormat   *ies.Format `gorm:"type:json"`
 
 	Downloader       string
 	DownloaderData   string
@@ -78,6 +79,10 @@ const (
 	BundleTypeGeneric
 )
 
+const (
+	BundleFlagExternal = 1 << iota
+)
+
 type Bundle struct {
 	gorm.Model
 	IE         string
@@ -89,6 +94,8 @@ type Bundle struct {
 	Title     string
 	Thumbnail string
 	Uploader  string
+
+	Flags int64
 
 	LastUpdate time.Time
 	AssetCount int64    `gorm:"-"`
@@ -102,6 +109,18 @@ func (f *Bundle) TableName() string {
 		return f._tabname
 	}
 	return "bundles"
+}
+
+func (f *Bundle) SetFlags(flag int64, set bool) {
+	if set {
+		f.Flags = f.Flags | flag
+	} else {
+		f.Flags = f.Flags &^ flag
+	}
+}
+
+func (f *Bundle) Flag(flag int64) bool {
+	return (f.Flags & flag) != 0
 }
 
 type ExternalDownloadingStatManagerFunc struct {

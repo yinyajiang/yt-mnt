@@ -1,16 +1,16 @@
 package monitor
 
 import (
-	"crypto/md5"
 	"errors"
-	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/duke-git/lancet/v2/mathutil"
 	"github.com/duke-git/lancet/v2/slice"
+	"github.com/google/uuid"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
+	"golang.org/x/exp/maps"
 )
 
 type selectedType struct {
@@ -34,6 +34,8 @@ type Explorer struct {
 
 	url  string
 	time time.Time
+
+	_uuid string
 }
 
 const (
@@ -43,6 +45,13 @@ const (
 	IndexRoot
 	IndexUser
 )
+
+func newExplorer() *Explorer {
+	var explorer Explorer
+	explorer.time = time.Now()
+	explorer._uuid = uuid.New().String()
+	return &explorer
+}
 
 func (e *Explorer) IsValid() bool {
 	return (e.ie != nil) &&
@@ -130,7 +139,70 @@ func (e *Explorer) SelectMediaType(mediaType int, allPage bool) {
 	})
 }
 
-func (e *Explorer) Selected() ([]*ies.MediaEntry, error) {
+func (e Explorer) User() (*ies.MediaEntry, error) {
+	userExplorer, err := e.GetUserExplorer()
+	if err != nil {
+		return nil, err
+	}
+	return userExplorer.Root(), nil
+}
+
+func (e Explorer) Item(index int, enableConvertUser bool) (*ies.MediaEntry, error) {
+	if index < 0 {
+		switch index {
+		case IndexRoot:
+			return e.Tree(), nil
+		case IndexUser:
+			if e.rootInfo.MediaType == ies.MediaTypeUser {
+				return e.Tree(), nil
+			}
+			if enableConvertUser {
+				err := e.ConvertToUserExplorer()
+				if err != nil {
+					return nil, err
+				}
+				return e.Tree(), nil
+			} else {
+				userExplorer, err := e.GetUserExplorer()
+				if err != nil {
+					return nil, err
+				}
+				return userExplorer.Item(IndexUser, false)
+			}
+		default:
+			return nil, errors.New("invalid item index")
+		}
+	} else {
+		if index >= len(e.allPage) {
+			return nil, errors.New("index out of range")
+		}
+		return e.allPage[index], nil
+	}
+}
+
+func (e *Explorer) GetUserExplorer() (*Explorer, error) {
+	userExplorer := Explorer{
+		ie:        e.ie,
+		rootToken: e.rootToken,
+		rootInfo:  e.rootInfo,
+	}
+	err := userExplorer.ie.ConvertToUserRoot(&userExplorer.rootToken, &userExplorer.rootInfo)
+	if err != nil {
+		return nil, err
+	}
+	return &userExplorer, nil
+}
+
+func (e *Explorer) ConvertToUserExplorer() error {
+	userExplorer, err := e.GetUserExplorer()
+	if err != nil {
+		return err
+	}
+	*e = *userExplorer
+	return nil
+}
+
+func (e *Explorer) Selected(enableConvertUser bool) ([]*ies.MediaEntry, error) {
 	// 筛选类型
 	for _, selectedType := range e.selectedTypes {
 		if selectedType.allPage {
@@ -157,28 +229,21 @@ func (e *Explorer) Selected() ([]*ies.MediaEntry, error) {
 		case IndexAllPage:
 			e.ExploreNextAll()
 			return e.allPage, nil
-		case IndexRoot:
-			return []*ies.MediaEntry{e.Tree()}, nil
-		case IndexUser:
-			if e.rootToken.MediaType == ies.MediaTypeUser && e.rootInfo.MediaType == ies.MediaTypeUser {
-				return []*ies.MediaEntry{e.Tree()}, nil
-			}
-			*e = Explorer{
-				ie:        e.ie,
-				rootToken: e.rootToken,
-				rootInfo:  e.rootInfo,
-				selecteds: e.selecteds,
-			}
-			err := e.ie.ConvertToUserRoot(&e.rootToken, &e.rootInfo)
+		case IndexRoot, IndexUser:
+			item, err := e.Item(index, enableConvertUser)
 			if err != nil {
 				return nil, err
 			}
-			return []*ies.MediaEntry{e.Tree()}, nil
+			return []*ies.MediaEntry{item}, nil
 		default:
 			selected = append(selected, e.allPage[index])
 		}
 	}
 	return selected, nil
+}
+
+func (e *Explorer) Size() int {
+	return len(e.allPage)
 }
 
 func (e *Explorer) ExploreNextAll() ([]*ies.MediaEntry, error) {
@@ -230,6 +295,10 @@ func (e *Explorer) Close() {
 	e.nextToken.IsEnd = true
 }
 
+func (e *Explorer) uuid() string {
+	return e._uuid
+}
+
 func (e *Explorer) firstSelectedIndex() int {
 	if len(e.selecteds) == 0 {
 		return math.MaxInt
@@ -238,51 +307,34 @@ func (e *Explorer) firstSelectedIndex() int {
 }
 
 type ExplorerCacher struct {
-	lock       sync.RWMutex
-	explorers  []*Explorer
-	cacheCount int
+	lock         sync.RWMutex
+	explorersMap map[string]*Explorer
+	cacheCount   int
 }
 
 func NewExplorerCacher(cacheCount_ ...int) *ExplorerCacher {
-	cacheCount := 10
-	if len(cacheCount_) > 0 {
+	cacheCount := 9999
+	if len(cacheCount_) > 0 && cacheCount_[0] >= 1 {
 		cacheCount = cacheCount_[0]
 	}
-	if cacheCount < 1 {
-		cacheCount = 10
-	}
 	return &ExplorerCacher{
-		lock:       sync.RWMutex{},
-		explorers:  make([]*Explorer, 0),
-		cacheCount: cacheCount,
+		lock:         sync.RWMutex{},
+		cacheCount:   cacheCount,
+		explorersMap: map[string]*Explorer{},
 	}
 }
 
-func (c *ExplorerCacher) Cache(explorer *Explorer) (handle string) {
+func (c *ExplorerCacher) Put(explorer *Explorer) (handle string) {
 	if explorer == nil {
 		return
 	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	for i, explorer := range c.explorers {
-		if !strings.EqualFold(urlToHandle(explorer.URL()), handle) {
-			continue
-		}
-		explorer.Close()
-		if len(c.explorers) == 1 {
-			c.explorers = make([]*Explorer, 0)
-		} else {
-			c.explorers = append(c.explorers[:i], c.explorers[i+1:]...)
-		}
-		break
+	c.explorersMap[explorer.uuid()] = explorer
+	if len(c.explorersMap) > c.cacheCount {
+		delete(c.explorersMap, c.first().uuid())
 	}
-	if len(c.explorers) > c.cacheCount {
-		c.explorers[0].Close()
-		c.explorers = c.explorers[1:]
-	}
-
-	c.explorers = append(c.explorers, explorer)
-	return urlToHandle(explorer.URL())
+	return explorer.uuid()
 }
 
 func (c *ExplorerCacher) Get(handle string) *Explorer {
@@ -291,12 +343,20 @@ func (c *ExplorerCacher) Get(handle string) *Explorer {
 	}
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	for _, explorer := range c.explorers {
-		if strings.EqualFold(urlToHandle(explorer.URL()), handle) {
-			return explorer
-		}
+	if explorer, ok := c.explorersMap[handle]; ok {
+		return explorer
 	}
 	return nil
+}
+
+func (c *ExplorerCacher) IsContain(handle string) bool {
+	if handle == "" {
+		return false
+	}
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	_, ok := c.explorersMap[handle]
+	return ok
 }
 
 func (c *ExplorerCacher) Delete(handle string) {
@@ -305,19 +365,22 @@ func (c *ExplorerCacher) Delete(handle string) {
 	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	for i, explorer := range c.explorers {
-		if !strings.EqualFold(urlToHandle(explorer.URL()), handle) {
-			continue
-		}
-		explorer.Close()
-		if len(c.explorers) == 1 {
-			c.explorers = make([]*Explorer, 0)
-		} else {
-			c.explorers = append(c.explorers[:i], c.explorers[i+1:]...)
-		}
-		return
-	}
+	delete(c.explorersMap, handle)
 }
-func urlToHandle(url string) string {
-	return fmt.Sprintf("%x", md5.Sum([]byte(url)))
+
+func (c *ExplorerCacher) Clear() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.explorersMap = map[string]*Explorer{}
+}
+
+func (c *ExplorerCacher) first() *Explorer {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	if len(c.explorersMap) == 0 {
+		return nil
+	}
+	return mathutil.MinBy(maps.Values(c.explorersMap), func(v, min *Explorer) bool {
+		return v.CreateTime().Before(min.CreateTime())
+	})
 }

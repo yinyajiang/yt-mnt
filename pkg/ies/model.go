@@ -6,10 +6,17 @@ import (
 	"time"
 )
 
+const (
+	FormatTypeComplete = iota
+	FormatTypeVideo
+	FormatTypeAudio
+)
+
 type Format struct {
-	Width  int64
-	Height int64
-	URL    string
+	Width      int64
+	Height     int64
+	URL        string
+	FormatType int
 }
 
 const (

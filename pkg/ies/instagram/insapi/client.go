@@ -214,6 +214,7 @@ func (i *InstagramApi) newRequest(method, url string, headers map[string]string,
 }
 
 func parseMediaInfo(item gjson.Result) ies.MediaEntry {
+
 	user := item.Get("user.username").String()
 	media := ies.MediaEntry{
 		MediaID:     item.Get("pk").String(),

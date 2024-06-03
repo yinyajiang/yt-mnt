@@ -98,7 +98,7 @@ func (m *Monitor) CreateExplorerCacher(cacheCount ...int) *ExplorerCacher {
 	return NewExplorerCacher(cacheCount...)
 }
 
-func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, error) {
+func (m *Monitor) OpenExplorer(url string, isPlain bool, opt ...ies.ParseOptions) (*Explorer, error) {
 	ie, err := ies.GetIE(url)
 	if err != nil {
 		return nil, err
@@ -107,24 +107,47 @@ func (m *Monitor) OpenExplorer(url string, opt ...ies.ParseOptions) (*Explorer, 
 	if err != nil {
 		return nil, err
 	}
-	var explorer Explorer
+	explorer := newExplorer()
 	explorer.ie = ie
 	explorer.url = url
-	explorer.time = time.Now()
 	explorer.rootInfo = *info
 	explorer.rootToken = *rootToken
 	explorer.pageIndex = 0
-	return &explorer, nil
+	return explorer, nil
+}
+
+func (m *Monitor) OpenItemExplorer(parentExplorer *Explorer, index int) (*Explorer, error) {
+	if index == IndexUser {
+		var err error
+		parentExplorer, err = parentExplorer.GetUserExplorer()
+		if err != nil {
+			return nil, err
+		}
+	}
+	item, err := parentExplorer.Item(index, false)
+	if err != nil {
+		return nil, err
+	}
+	return m.OpenExplorer(item.URL, false)
 }
 
 func (m *Monitor) SubscribeURL(url string) ([]*Bundle, error) {
-	explorer, err := m.OpenExplorer(url)
+	explorer, err := m.OpenExplorer(url, false)
 	if err != nil {
 		return nil, err
 	}
 	defer explorer.Close()
 	explorer.Select(IndexRoot)
 	return m.SubscribeSelected(explorer)
+}
+
+func (m *Monitor) IsSubscribed(url string) bool {
+	var count int64
+	m._db.Model(&Bundle{}).Where(&Bundle{
+		URL:      url,
+		FeedType: BundleTypeFeed,
+	}).Count(&count)
+	return count > 0
 }
 
 func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Asset, err error) {
@@ -150,7 +173,7 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Ass
 	if len(newEntries) == 0 {
 		return
 	}
-	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, dir, quality)
+	newAssets, err = m.saveAssets(feed.IE, "", newEntries, &feed, dir, quality)
 	if err != nil {
 		return
 	}
@@ -375,12 +398,26 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 		return existBundles, err
 	}
 
-	result, err := m.saveBundles(explorer.ie.Name(), saveBundles, BundleTypeFeed, "", "")
+	result, err := m.saveBundles(explorer.ie.Name(), nil, saveBundles, BundleTypeFeed, "", "")
 	if err != nil {
 		return nil, err
 	}
 	result = append(result, existBundles...)
 	return result, nil
+}
+
+func (m *Monitor) AddExternalDownloadBundle(usedDowner string, bundle *ies.MediaEntry, dir, quality string) (*Bundle, error) {
+	if usedDowner == "" {
+		return nil, fmt.Errorf("downloader not specified")
+	}
+	bundles, err := m.saveBundles("external", func(b *Bundle) string {
+		b.SetFlags(BundleFlagExternal, true)
+		return usedDowner
+	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, dir, quality)
+	if err != nil {
+		return nil, err
+	}
+	return bundles[0], nil
 }
 
 func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title string) string, dir, quality string) ([]*Bundle, error) {
@@ -400,7 +437,7 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title
 			bundle.Title = renameBundle(bundle.Title)
 		}
 	}
-	return m.saveBundles(explorer.ie.Name(), bundles, BundleTypeGeneric, dir, quality)
+	return m.saveBundles(explorer.ie.Name(), nil, bundles, BundleTypeGeneric, dir, quality)
 }
 
 func (m *Monitor) StopDownloading(id uint, wait bool) {
@@ -517,10 +554,11 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		DownloadPercent: asset.DownloadPercent,
 		DownloadFileDir: asset.DownloadFileDir,
 
-		DownloadFileStem: &asset.DownloadFileStem,
-		DownloadFileExt:  &asset.DownloadFileExt,
-		DownloadFormat:   qualityFormat,
-		DownloaderData:   &asset.DownloaderData,
+		DownloadFileStem:    &asset.DownloadFileStem,
+		DownloadFileExt:     &asset.DownloadFileExt,
+		MainDownloadFormat:  qualityFormat,
+		AudioDownloadFormat: *asset.AudioFormat,
+		DownloaderData:      &asset.DownloaderData,
 	}, sink)
 	if err != nil {
 		if ok {
@@ -554,7 +592,7 @@ func (m *Monitor) GetDownloadingStatFunc() (
 }
 
 func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bool) ([]*ies.MediaEntry, error) {
-	selected, err := explorer.Selected()
+	selected, err := explorer.Selected(true)
 	if err != nil {
 		return nil, err
 	}
@@ -591,9 +629,9 @@ func (m *Monitor) selectedBundlesMedia(explorer *Explorer, isDeepDownloadable bo
 	return bundles, err
 }
 
-/* 每个item表示一个bundle(user/playlist),bundle的子项一定是可以下载的媒体类型 */
+/* 每个元素表示一个bundle(user/playlist),元素的子项一定是可以下载的媒体类型 */
 func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
-	explorer, err := m.OpenExplorer(url)
+	explorer, err := m.OpenExplorer(url, false)
 	if err != nil {
 		return nil
 	}
@@ -624,7 +662,7 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer string), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
 	for _, entry := range bundleMedias {
 		if m.storage.IsClosed() {
@@ -647,13 +685,16 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 			err = fmt.Errorf("feed unsupported media type: %d", entry.MediaType)
 			continue
 		}
-
+		downerName := ""
+		if preSaveBundle != nil {
+			downerName = preSaveBundle(bundle)
+		}
 		err = m.storage.Create(bundle)
 		if err != nil {
 			continue
 		}
 		if saveBundleType != BundleTypeFeed {
-			assets, err := m.saveAssets(ie, entry.Entries, bundle, dir, quality)
+			assets, err := m.saveAssets(ie, downerName, entry.Entries, bundle, dir, quality)
 			if err == nil {
 				bundle.Assets = assets
 				bundle.AssetCount = int64(len(assets))
@@ -667,10 +708,17 @@ func (m *Monitor) saveBundles(ie string, bundleMedias []*ies.MediaEntry, saveBun
 	return bundles, err
 }
 
-func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, dir, quality string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveAssets(ie, downerName string, entryies []*ies.MediaEntry, owner *Bundle, dir, quality string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
-	downer := downloader.GetByIE(ie)
+
+	var downer downloader.Downloader
+	if downerName != "" {
+		downer = downloader.GetByName(downerName)
+	}
+	if downer == nil {
+		downer = downloader.GetByIE(ie)
+	}
 
 	if quality == "" {
 		quality = "best"
@@ -685,12 +733,18 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 		}
 
 		var qualityFormat *ies.Format
+		var audioFormat *ies.Format
 		if downer.IsNeedFormat() {
 			if len(entry.Formats) == 0 {
 				err = fmt.Errorf("no format found for entry: %s", entry.URL)
 				continue
 			}
-			qualityFormat = entry.Formats[selectFormatByResolution(entry.Formats, quality)]
+			qualityFormat = entry.Formats[selectQualityFormatByResolution(entry.Formats, quality)]
+			if ies.MediaTypeVideo == entry.MediaType && qualityFormat.FormatType == ies.FormatTypeVideo {
+				if audioIndex := selectAudioFormatByResolution(entry.Formats, quality); audioIndex >= 0 {
+					audioFormat = entry.Formats[audioIndex]
+				}
+			}
 		}
 		asset := &Asset{
 			Status: AssetStatusNew,
@@ -700,6 +754,7 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 			Quality:       quality,
 			Thumbnail:     entry.Thumbnail,
 			QualityFormat: qualityFormat,
+			AudioFormat:   audioFormat,
 
 			DownloadFileDir: dir,
 			Downloader:      downer.Name(),

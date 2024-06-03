@@ -29,11 +29,12 @@ type Downloader interface {
 }
 
 type DownloadOptions struct {
-	URL             string
-	Quality         string
-	DownloadFormat  ies.Format
-	DownloadedSize  int64
-	DownloadPercent float64
+	URL                 string
+	Quality             string
+	MainDownloadFormat  ies.Format
+	AudioDownloadFormat ies.Format
+	DownloadedSize      int64
+	DownloadPercent     float64
 
 	DownloadFileDir  string
 	DownloadFileStem *string
@@ -127,6 +128,5 @@ func GetByIE(ie string) Downloader {
 			}
 		}
 	}
-	log.Panicf("downloader for %s not found", ie)
 	return nil
 }

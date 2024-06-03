@@ -7,17 +7,24 @@ import (
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
 
-func selectFormatByResolution(formats []*ies.Format, resolution string) (index int) {
+func selectQualityFormatByResolution(formats []*ies.Format, resolution string) (index int) {
 	if len(formats) == 0 {
 		return -1
 	}
 	if resolution == "best" {
-		return 0
+		for i, f := range formats {
+			if f.FormatType == ies.FormatTypeComplete {
+				return i
+			}
+		}
 	}
 	if resolution == "worst" {
-		return len(formats) - 1
+		for i := len(formats) - 1; i >= 0; i-- {
+			if formats[i].FormatType == ies.FormatTypeComplete {
+				return i
+			}
+		}
 	}
-
 	r, _ := common.ParseResolutionInfo(resolution)
 	for i, f := range formats {
 		fr, _ := common.ParseResolutionInfo(fmt.Sprintf("%dx%d", f.Width, f.Height))
@@ -25,6 +32,18 @@ func selectFormatByResolution(formats []*ies.Format, resolution string) (index i
 			index = i
 		} else {
 			break
+		}
+	}
+	return
+}
+
+func selectAudioFormatByResolution(formats []*ies.Format, resolution string) (index int) {
+	if len(formats) == 0 {
+		return -1
+	}
+	for i, f := range formats {
+		if f.FormatType == ies.FormatTypeAudio {
+			return i
 		}
 	}
 	return

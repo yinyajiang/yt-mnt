@@ -36,7 +36,27 @@ func client() *http.Client {
 	}
 }
 
-func downloadW(ctx context.Context, url string, w io.Writer, sink downloader.ProgressSink) (err error) {
+func urlSize(ctx context.Context, url string) int64 {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := client().Do(req)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+
+	var total int64
+	if len(resp.Header.Values("Content-Length")) > 0 {
+		total, _ = strconv.ParseInt(resp.Header.Values("Content-Length")[0], 10, 64)
+	}
+	return total
+}
+
+func downloadW(ctx context.Context, url string, w io.Writer, total int64, sink downloader.ProgressSink) (err error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return
@@ -49,10 +69,12 @@ func downloadW(ctx context.Context, url string, w io.Writer, sink downloader.Pro
 	}
 	defer resp.Body.Close()
 
-	var total int64
-	if len(resp.Header.Values("Content-Length")) > 0 {
-		total, _ = strconv.ParseInt(resp.Header.Values("Content-Length")[0], 10, 64)
+	if total <= 0 {
+		if len(resp.Header.Values("Content-Length")) > 0 {
+			total, _ = strconv.ParseInt(resp.Header.Values("Content-Length")[0], 10, 64)
+		}
 	}
+
 	defer resp.Body.Close()
 
 	var (
@@ -110,14 +132,14 @@ loop:
 	return nil
 }
 
-func downloadFile(ctx context.Context, url, path string, sink downloader.ProgressSink) (err error) {
+func downloadFile(ctx context.Context, url, path string, avTotal int64, sink downloader.ProgressSink) (err error) {
 	os.MkdirAll(filepath.Dir(path), os.ModePerm)
 	downingPath := path + ".downing"
 	f, err := os.Create(downingPath)
 	if err != nil {
 		return
 	}
-	err = downloadW(ctx, url, f, sink)
+	err = downloadW(ctx, url, f, avTotal, sink)
 	f.Close()
 	if err == nil {
 		os.Rename(downingPath, path)
