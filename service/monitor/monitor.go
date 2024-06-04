@@ -94,8 +94,8 @@ func (m *Monitor) LocalDownloaderStageSaver(dir string) downloader.DownloaderSta
 	return downloader.NewLocalDirStageSaver(dir)
 }
 
-func (m *Monitor) CreateExplorerCacher(cacheCount ...int) *ExplorerCacher {
-	return NewExplorerCacher(cacheCount...)
+func (m *Monitor) CreateExplorerCacher(cacheCount ...int) *ExplorerCaches {
+	return NewExplorerCaches(cacheCount...)
 }
 
 func (m *Monitor) OpenExplorer(url string, isPlain bool, opt ...ies.ParseOptions) (*Explorer, error) {
@@ -112,18 +112,10 @@ func (m *Monitor) OpenExplorer(url string, isPlain bool, opt ...ies.ParseOptions
 	explorer.url = url
 	explorer.rootInfo = *info
 	explorer.rootToken = *rootToken
-	explorer.pageIndex = 0
 	return explorer, nil
 }
 
 func (m *Monitor) OpenItemExplorer(parentExplorer *Explorer, index int) (*Explorer, error) {
-	if index == IndexUser {
-		var err error
-		parentExplorer, err = parentExplorer.GetUserExplorer()
-		if err != nil {
-			return nil, err
-		}
-	}
 	item, err := parentExplorer.Item(index, false)
 	if err != nil {
 		return nil, err
@@ -131,14 +123,18 @@ func (m *Monitor) OpenItemExplorer(parentExplorer *Explorer, index int) (*Explor
 	return m.OpenExplorer(item.URL, false)
 }
 
-func (m *Monitor) SubscribeURL(url string) ([]*Bundle, error) {
+func (m *Monitor) SubscribeURL(url string) (*Bundle, error) {
 	explorer, err := m.OpenExplorer(url, false)
 	if err != nil {
 		return nil, err
 	}
 	defer explorer.Close()
 	explorer.Select(IndexRoot)
-	return m.SubscribeSelected(explorer)
+	bundles, err := m.SubscribeSelected(explorer)
+	if err != nil {
+		return nil, err
+	}
+	return bundles[0], nil
 }
 
 func (m *Monitor) IsSubscribed(url string) bool {
@@ -191,15 +187,29 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Ass
 	return
 }
 
-func (m *Monitor) Unsubscribe(id uint) error {
-	err := m.storage.WhereUpdates(&Bundle{
-		Model: gorm.Model{
-			ID: id,
-		},
-	}, &Bundle{
-		BundleType: BundleTypeGeneric,
-	})
-	return err
+func (m *Monitor) Unsubscribe(id uint, deleteEmpty bool) (isDeleted bool, err error) {
+	if deleteEmpty {
+		assetCount := int64(0)
+		if e := m._db.Model(&Asset{}).Where(&Asset{
+			BundleID: id,
+		}).Count(&assetCount).Error; e != nil {
+			assetCount = 1
+		}
+		isDeleted = assetCount == 0
+	}
+	if isDeleted {
+		m.DeleteBundle(id)
+		return
+	} else {
+		err = m.storage.WhereUpdates(&Bundle{
+			Model: gorm.Model{
+				ID: id,
+			},
+		}, &Bundle{
+			BundleType: BundleTypeGeneric,
+		})
+		return
+	}
 }
 
 func (m *Monitor) DeleteAsset(id uint) {
@@ -235,25 +245,24 @@ func (m *Monitor) DeleteBundle(id uint) {
 	})
 }
 
-func (m *Monitor) Clear(indludeSubscrption bool) []uint {
+func (m *Monitor) ClearTypeBundles(bundleTypes ...int) []uint {
 	deleted := []uint{}
-	if indludeSubscrption {
-		m.StopAllDownloading(true)
-		bundles, _ := m.ListBundles(false, false, true)
-		for _, bundle := range bundles {
-			deleted = append(deleted, bundle.ID)
-		}
-
-		m.storage.DeleteAll(&Bundle{})
-		m.storage.DeleteAll(&Asset{})
-	} else {
-		bundles, _ := m.ListBundles(false, false, false)
-		for _, bundle := range bundles {
-			deleted = append(deleted, bundle.ID)
-			m.DeleteBundle(bundle.ID)
-		}
+	bundles, _ := m.ListTypeBundles(false, false, bundleTypes...)
+	for _, bundle := range bundles {
+		deleted = append(deleted, bundle.ID)
+		m.DeleteBundle(bundle.ID)
 	}
 	return deleted
+}
+
+func (m *Monitor) ClearAll() {
+	m.StopAllDownloading(true)
+	bundles, _ := m.ListBundlesByWheres(false, false)
+	for _, bundle := range bundles {
+		m.DeleteBundle(bundle.ID)
+	}
+	m.storage.DeleteAll(&Bundle{})
+	m.storage.DeleteAll(&Asset{})
 }
 
 func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, error) {
@@ -295,22 +304,17 @@ func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, er
 	return &bundle, err
 }
 
-func (m *Monitor) ListFeedBundles(preload bool, assetCount bool) ([]*Bundle, error) {
-	return m.ListBundlesByWhere(preload, assetCount, &Bundle{
-		BundleType: BundleTypeFeed,
-	})
-}
-
-func (m *Monitor) ListBundles(preload bool, assetCount bool, includeSubscrption bool) ([]*Bundle, error) {
-	if includeSubscrption {
-		return m.ListBundlesByWhere(preload, assetCount, nil)
+func (m *Monitor) ListTypeBundles(preload bool, assetCount bool, bundleTypes ...int) ([]*Bundle, error) {
+	bundle := []*Bundle{}
+	for _, t := range bundleTypes {
+		bundle = append(bundle, &Bundle{
+			BundleType: t,
+		})
 	}
-	return m.ListBundlesByWhere(preload, assetCount, &Bundle{
-		BundleType: BundleTypeGeneric,
-	})
+	return m.ListBundlesByWheres(preload, assetCount, bundle...)
 }
 
-func (m *Monitor) ListBundlesByWhere(preload bool, assetCount bool, where *Bundle) ([]*Bundle, error) {
+func (m *Monitor) ListBundlesByWheres(preload bool, assetCount bool, orwheres ...*Bundle) ([]*Bundle, error) {
 	var bundles []*Bundle
 	var err error
 	var tx *gorm.DB
@@ -319,8 +323,11 @@ func (m *Monitor) ListBundlesByWhere(preload bool, assetCount bool, where *Bundl
 	} else {
 		tx = m._db
 	}
-	if where != nil {
-		err = tx.Find(&bundles, where).Error
+	if len(orwheres) != 0 {
+		for i := 1; i < len(orwheres); i++ {
+			tx = tx.Or(orwheres[i])
+		}
+		err = tx.Find(&bundles).Error
 	} else {
 		err = tx.Find(&bundles).Error
 	}
@@ -411,7 +418,6 @@ func (m *Monitor) AddExternalDownloadBundle(usedDowner string, bundle *ies.Media
 		return nil, fmt.Errorf("downloader not specified")
 	}
 	bundles, err := m.saveBundles("external", func(b *Bundle) string {
-		b.SetFlags(BundleFlagExternal, true)
 		return usedDowner
 	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, dir, quality)
 	if err != nil {
@@ -424,7 +430,7 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title
 	switch explorer.RootMediaType() {
 	case ies.MediaTypeUser:
 		if explorer.firstSelectedIndex() == IndexUser {
-			explorer.ExploreNextAll()
+			explorer.loadNextAll()
 		}
 	}
 
@@ -561,10 +567,14 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		DownloaderData:      &asset.DownloaderData,
 	}, sink)
 	if err != nil {
-		if ok {
-			asset.Status = AssetStatusDownloading
+		if common.IsCtxDone(ctx) {
+			asset.Status = AssetStatusCanceled
 		} else {
-			asset.Status = AssetStatusFail
+			if ok {
+				asset.Status = AssetStatusDownloading
+			} else {
+				asset.Status = AssetStatusFail
+			}
 		}
 	} else {
 		asset.Status = AssetStatusFinished
@@ -635,7 +645,7 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	if err != nil {
 		return nil
 	}
-	explorer.ExploreNextAll()
+	explorer.loadNextAll()
 
 	root := explorer.Root()
 	ret := make([]*ies.MediaEntry, 0)

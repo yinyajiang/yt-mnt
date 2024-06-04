@@ -13,6 +13,7 @@ const (
 	AssetStatusNew = iota + 1
 	AssetStatusDownloading
 	AssetStatusFinished
+	AssetStatusCanceled
 	AssetStatusFail
 )
 
@@ -47,6 +48,8 @@ type Asset struct {
 	DownloadTotalSize int64
 	DownloadedSize    int64
 	DownloadPercent   float64
+
+	UserData string
 
 	_tabname string
 }
@@ -100,6 +103,8 @@ type Bundle struct {
 	LastUpdate time.Time
 	AssetCount int64    `gorm:"-"`
 	Assets     []*Asset `gorm:"foreignKey:BundleID"`
+
+	UserData string
 
 	_tabname string
 }

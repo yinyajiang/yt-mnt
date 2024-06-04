@@ -38,6 +38,7 @@ func selectQualityFormatByResolution(formats []*ies.Format, resolution string) (
 }
 
 func selectAudioFormatByResolution(formats []*ies.Format, resolution string) (index int) {
+	_ = resolution
 	if len(formats) == 0 {
 		return -1
 	}

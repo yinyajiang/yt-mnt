@@ -22,6 +22,7 @@ type Explorer struct {
 	ie        ies.InfoExtractor
 	rootToken ies.RootToken
 	rootInfo  ies.MediaEntry
+	url       string
 
 	nextToken ies.NextPageToken
 
@@ -32,10 +33,9 @@ type Explorer struct {
 	selectedTypes []selectedType
 	isPlain       bool
 
-	url  string
-	time time.Time
-
-	_uuid string
+	_time       time.Time
+	_uuid       string
+	_itemCaches pageItemCaches
 }
 
 const (
@@ -48,8 +48,11 @@ const (
 
 func newExplorer() *Explorer {
 	var explorer Explorer
-	explorer.time = time.Now()
+	explorer._time = time.Now()
 	explorer._uuid = uuid.New().String()
+	explorer._itemCaches = pageItemCaches{
+		explorer: &explorer,
+	}
 	return &explorer
 }
 
@@ -62,7 +65,7 @@ func (e *Explorer) IsValid() bool {
 }
 
 func (e *Explorer) IsEnd() bool {
-	return e.nextToken.IsEnd
+	return e._itemCaches.isCacheEmpty() && e.loadIsEnd()
 }
 
 func (e *Explorer) Root() *ies.MediaEntry {
@@ -71,7 +74,7 @@ func (e *Explorer) Root() *ies.MediaEntry {
 }
 
 func (e *Explorer) CreateTime() time.Time {
-	return e.time
+	return e._time
 }
 
 func (e *Explorer) URL() string {
@@ -97,7 +100,7 @@ func (e *Explorer) Page() []*ies.MediaEntry {
 
 func (e *Explorer) AllPage(loadLeft ...bool) []*ies.MediaEntry {
 	if len(loadLeft) > 0 && loadLeft[0] {
-		e.ExploreNextAll()
+		e.loadNextAll()
 	}
 	return e.allPage
 }
@@ -111,6 +114,18 @@ func (e *Explorer) PageCount() int {
 		return 0
 	}
 	return len(e.allPage) - e.pageIndex
+}
+
+func (e *Explorer) ExploreNextAll() ([]*ies.MediaEntry, error) {
+	return e._itemCaches.exploreNextAll()
+}
+
+func (e *Explorer) ExploreNext(max_ ...int) ([]*ies.MediaEntry, error) {
+	max := -1
+	if len(max_) > 0 {
+		max = max_[0]
+	}
+	return e._itemCaches.exploreNext(max)
 }
 
 func (e *Explorer) ResetSelected() {
@@ -181,16 +196,16 @@ func (e Explorer) Item(index int, enableConvertUser bool) (*ies.MediaEntry, erro
 }
 
 func (e *Explorer) GetUserExplorer() (*Explorer, error) {
-	userExplorer := Explorer{
-		ie:        e.ie,
-		rootToken: e.rootToken,
-		rootInfo:  e.rootInfo,
-	}
+	userExplorer := newExplorer()
+	userExplorer.ie = e.ie
+	userExplorer.rootToken = e.rootToken
+	userExplorer.rootInfo = e.rootInfo
+	userExplorer.url = e.url
 	err := userExplorer.ie.ConvertToUserRoot(&userExplorer.rootToken, &userExplorer.rootInfo)
 	if err != nil {
 		return nil, err
 	}
-	return &userExplorer, nil
+	return userExplorer, nil
 }
 
 func (e *Explorer) ConvertToUserExplorer() error {
@@ -206,7 +221,7 @@ func (e *Explorer) Selected(enableConvertUser bool) ([]*ies.MediaEntry, error) {
 	// 筛选类型
 	for _, selectedType := range e.selectedTypes {
 		if selectedType.allPage {
-			e.ExploreNextAll()
+			e.loadNextAll()
 		}
 		for i, entry := range e.allPage {
 			if entry.MediaType == selectedType.mediaType {
@@ -227,7 +242,7 @@ func (e *Explorer) Selected(enableConvertUser bool) ([]*ies.MediaEntry, error) {
 		case IndexExplored:
 			return e.allPage, nil
 		case IndexAllPage:
-			e.ExploreNextAll()
+			e.loadNextAll()
 			return e.allPage, nil
 		case IndexRoot, IndexUser:
 			item, err := e.Item(index, enableConvertUser)
@@ -246,15 +261,6 @@ func (e *Explorer) Size() int {
 	return len(e.allPage)
 }
 
-func (e *Explorer) ExploreNextAll() ([]*ies.MediaEntry, error) {
-	for !e.IsEnd() {
-		if _, err := e.ExporeNextPage(); err != nil {
-			return nil, err
-		}
-	}
-	return e.allPage, nil
-}
-
 func (e *Explorer) SetPlain() {
 	e.isPlain = true
 	if len(e.allPage) > 0 {
@@ -268,11 +274,39 @@ func (e *Explorer) IsPlain() bool {
 	return e.isPlain
 }
 
-func (e *Explorer) ExporeNextPage() ([]*ies.MediaEntry, error) {
+func (e *Explorer) Close() {
+	e.nextToken.IsEnd = true
+}
+
+func (e *Explorer) uuid() string {
+	return e._uuid
+}
+
+func (e *Explorer) firstSelectedIndex() int {
+	if len(e.selecteds) == 0 {
+		return math.MaxInt
+	}
+	return e.selecteds[0]
+}
+
+func (e *Explorer) loadIsEnd() bool {
+	return e.nextToken.IsEnd
+}
+
+func (e *Explorer) loadNextAll() ([]*ies.MediaEntry, error) {
+	for !e.loadIsEnd() {
+		if _, err := e.loadNextPage(); err != nil {
+			return nil, err
+		}
+	}
+	return e.allPage, nil
+}
+
+func (e *Explorer) loadNextPage() ([]*ies.MediaEntry, error) {
 	if !e.IsValid() {
 		return nil, errors.New("invalid explore handle")
 	}
-	if e.IsEnd() {
+	if e.loadIsEnd() {
 		return nil, errors.New("no more page")
 	}
 	page, err := e.ie.ExtractPage(&e.rootToken, &e.nextToken)
@@ -291,40 +325,88 @@ func (e *Explorer) ExporeNextPage() ([]*ies.MediaEntry, error) {
 	return e.Page(), nil
 }
 
-func (e *Explorer) Close() {
-	e.nextToken.IsEnd = true
+type pageItemCaches struct {
+	_cacheItems []*ies.MediaEntry
+	explorer    *Explorer
 }
 
-func (e *Explorer) uuid() string {
-	return e._uuid
+func (p *pageItemCaches) isCacheEmpty() bool {
+	return len(p._cacheItems) == 0
 }
 
-func (e *Explorer) firstSelectedIndex() int {
-	if len(e.selecteds) == 0 {
-		return math.MaxInt
+func (p *pageItemCaches) exploreNextAll() ([]*ies.MediaEntry, error) {
+	all := p.pop(-1)
+	nextall, err := p.explorer.loadNextAll()
+	all = append(all, nextall...)
+	if len(all) != 0 {
+		err = nil
 	}
-	return e.selecteds[0]
+	return all, err
 }
 
-type ExplorerCacher struct {
+func (p *pageItemCaches) exploreNext(max int) ([]*ies.MediaEntry, error) {
+	if max <= 0 {
+		lastPages := p.pop(-1)
+		pages, err := p.explorer.loadNextPage()
+		lastPages = append(lastPages, pages...)
+		if len(lastPages) != 0 {
+			err = nil
+		}
+		return lastPages, err
+	}
+	if len(p._cacheItems) >= max {
+		return p.pop(max), nil
+	}
+	pages, err := p.explorer.loadNextPage()
+	if err != nil {
+		return nil, err
+	}
+	p.append(pages)
+	return p.pop(max), nil
+}
+
+func (p *pageItemCaches) append(pages []*ies.MediaEntry) {
+	p._cacheItems = append(p._cacheItems, pages...)
+}
+
+func (p *pageItemCaches) clear() {
+	p._cacheItems = []*ies.MediaEntry{}
+}
+
+func (p *pageItemCaches) pop(max int) []*ies.MediaEntry {
+	if len(p._cacheItems) == 0 {
+		return []*ies.MediaEntry{}
+	}
+	if max <= 0 || max >= len(p._cacheItems) {
+		result := p._cacheItems[:len(p._cacheItems)]
+		p.clear()
+		return result
+	} else {
+		result := p._cacheItems[:max]
+		p._cacheItems = p._cacheItems[max:]
+		return result
+	}
+}
+
+type ExplorerCaches struct {
 	lock         sync.RWMutex
 	explorersMap map[string]*Explorer
 	cacheCount   int
 }
 
-func NewExplorerCacher(cacheCount_ ...int) *ExplorerCacher {
+func NewExplorerCaches(cacheCount_ ...int) *ExplorerCaches {
 	cacheCount := 9999
 	if len(cacheCount_) > 0 && cacheCount_[0] >= 1 {
 		cacheCount = cacheCount_[0]
 	}
-	return &ExplorerCacher{
+	return &ExplorerCaches{
 		lock:         sync.RWMutex{},
 		cacheCount:   cacheCount,
 		explorersMap: map[string]*Explorer{},
 	}
 }
 
-func (c *ExplorerCacher) Put(explorer *Explorer) (handle string) {
+func (c *ExplorerCaches) Put(explorer *Explorer) (handle string) {
 	if explorer == nil {
 		return
 	}
@@ -337,7 +419,7 @@ func (c *ExplorerCacher) Put(explorer *Explorer) (handle string) {
 	return explorer.uuid()
 }
 
-func (c *ExplorerCacher) Get(handle string) *Explorer {
+func (c *ExplorerCaches) Get(handle string) *Explorer {
 	if handle == "" {
 		return nil
 	}
@@ -349,7 +431,7 @@ func (c *ExplorerCacher) Get(handle string) *Explorer {
 	return nil
 }
 
-func (c *ExplorerCacher) IsContain(handle string) bool {
+func (c *ExplorerCaches) IsContain(handle string) bool {
 	if handle == "" {
 		return false
 	}
@@ -359,7 +441,7 @@ func (c *ExplorerCacher) IsContain(handle string) bool {
 	return ok
 }
 
-func (c *ExplorerCacher) Delete(handle string) {
+func (c *ExplorerCaches) Delete(handle string) {
 	if handle == "" {
 		return
 	}
@@ -368,13 +450,13 @@ func (c *ExplorerCacher) Delete(handle string) {
 	delete(c.explorersMap, handle)
 }
 
-func (c *ExplorerCacher) Clear() {
+func (c *ExplorerCaches) Clear() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.explorersMap = map[string]*Explorer{}
 }
 
-func (c *ExplorerCacher) first() *Explorer {
+func (c *ExplorerCaches) first() *Explorer {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	if len(c.explorersMap) == 0 {
