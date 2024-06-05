@@ -394,7 +394,7 @@ func (m *Monitor) ListAssets(bundleID uint) (assets []*Asset, err error) {
 	return
 }
 
-func (m *Monitor) ListAssetsWithOffset(bundleID uint, offset, limit int) (assets []*Asset, newOffset int, err error) {
+func (m *Monitor) ListAssetsWithOffset(bundleID uint, offset, limit int) (assets []*Asset, err error) {
 	if limit <= 0 && offset <= 0 {
 		assets, err = m.ListAssets(bundleID)
 		return
@@ -406,9 +406,6 @@ func (m *Monitor) ListAssetsWithOffset(bundleID uint, offset, limit int) (assets
 	err = m._db.Where(&Asset{
 		BundleID: bundleID,
 	}).Offset(offset).Limit(limit).Order("id DESC").Find(&assets).Error
-	if err == nil {
-		newOffset = offset + len(assets)
-	}
 	return
 }
 
