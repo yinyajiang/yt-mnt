@@ -100,9 +100,10 @@ type Bundle struct {
 
 	Flags int64
 
-	LastUpdate time.Time
-	AssetCount int64    `gorm:"-"`
-	Assets     []*Asset `gorm:"foreignKey:BundleID"`
+	LastUpdate         time.Time
+	AssetCount         int64    `gorm:"-"`
+	AssetFinishedCount int64    `gorm:"-"`
+	Assets             []*Asset `gorm:"foreignKey:BundleID"`
 
 	UserData string
 

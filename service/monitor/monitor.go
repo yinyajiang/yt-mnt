@@ -369,6 +369,9 @@ func (m *Monitor) ListBundlesByWheres(preload bool, assetCount bool, orwheres ..
 			m._db.Model(&Asset{}).Where(&Asset{
 				BundleID: bundle.ID,
 			}).Count(&bundle.AssetCount)
+			m._db.Model(&Asset{}).Where(&Asset{
+				Status: AssetStatusFinished,
+			}).Count(&bundle.AssetFinishedCount)
 		}
 	}
 	return bundles, err
