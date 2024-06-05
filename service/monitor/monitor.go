@@ -351,9 +351,9 @@ func (m *Monitor) ListBundlesByWheres(preload bool, assetCount bool, orwheres ..
 	var err error
 	var tx *gorm.DB
 	if preload {
-		tx = m._db.Preload(clause.Associations)
+		tx = m._db.Preload(clause.Associations).Order("id DESC")
 	} else {
-		tx = m._db
+		tx = m._db.Order("id DESC")
 	}
 	if len(orwheres) != 0 {
 		for _, or := range orwheres {
@@ -390,7 +390,25 @@ func (m *Monitor) GetAsset(id uint) (*Asset, error) {
 func (m *Monitor) ListAssets(bundleID uint) (assets []*Asset, err error) {
 	err = m._db.Where(&Asset{
 		BundleID: bundleID,
-	}).Find(&assets).Error
+	}).Order("id DESC").Find(&assets).Error
+	return
+}
+
+func (m *Monitor) ListAssetsWithOffset(bundleID uint, offset, limit int) (assets []*Asset, newOffset int, err error) {
+	if limit <= 0 && offset <= 0 {
+		assets, err = m.ListAssets(bundleID)
+		return
+	}
+	if limit == 0 {
+		limit = -1
+	}
+
+	err = m._db.Where(&Asset{
+		BundleID: bundleID,
+	}).Offset(offset).Limit(limit).Order("id DESC").Find(&assets).Error
+	if err == nil {
+		newOffset = offset + len(assets)
+	}
 	return
 }
 
