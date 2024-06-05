@@ -133,3 +133,16 @@ type ExternalDownloadingStatManagerFunc struct {
 	GetExternalDownloadingCount func() int
 	OverMaxConcurrentErr        error
 }
+
+type LastDownloading struct {
+	gorm.Model
+	AssetID  uint
+	_tabname string
+}
+
+func (l *LastDownloading) TableName() string {
+	if l._tabname != "" {
+		return l._tabname
+	}
+	return "last_downloading"
+}

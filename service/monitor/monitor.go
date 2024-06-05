@@ -45,6 +45,7 @@ type MonitorOption struct {
 	IEToken                            ies.IETokens
 	AssetTableName                     string
 	BundleTableName                    string
+	LastDownloadingTableName           string
 	RegistDownloader                   []downloader.Downloader
 	DBOption                           db.DBOption
 	ExternalDownloadingStatManagerFunc ExternalDownloadingStatManagerFunc
@@ -67,6 +68,9 @@ func NewMonitor(opt MonitorOption) (*Monitor, error) {
 		&Bundle{
 			_tabname: opt.BundleTableName,
 		},
+		&LastDownloading{
+			_tabname: opt.LastDownloadingTableName,
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -85,7 +89,10 @@ func (m *Monitor) SetExternalDownloadingStatManagerFunc(f ExternalDownloadingSta
 	m.externalDownloadingStatManagerFunc = f
 }
 
-func (m *Monitor) Close() {
+func (m *Monitor) Close(recordDownloadings ...bool) {
+	if len(recordDownloadings) > 0 && recordDownloadings[0] {
+		m.RecordDownloadings()
+	}
 	m.StopAllDownloading(true)
 	m.storage.Close()
 }
@@ -121,6 +128,30 @@ func (m *Monitor) OpenItemExplorer(parentExplorer *Explorer, index int) (*Explor
 		return nil, err
 	}
 	return m.OpenExplorer(item.URL, false)
+}
+
+func (m *Monitor) RecordDownloadings() error {
+	m.storage.DeleteAll(&LastDownloading{})
+	ids := m.getDownloadingsID()
+	if len(ids) == 0 {
+		return nil
+	}
+	for _, id := range ids {
+		m.storage.Create(&LastDownloading{
+			AssetID: id,
+		})
+	}
+	return nil
+}
+
+func (m *Monitor) GetLastDownloadings() []uint {
+	var lasts []LastDownloading
+	m._db.Find(&lasts)
+	ids := []uint{}
+	for _, last := range lasts {
+		ids = append(ids, last.AssetID)
+	}
+	return ids
 }
 
 func (m *Monitor) SubscribeURL(url string) (*Bundle, error) {
@@ -263,6 +294,7 @@ func (m *Monitor) ClearAll() {
 	}
 	m.storage.DeleteAll(&Bundle{})
 	m.storage.DeleteAll(&Asset{})
+	m.storage.DeleteAll(&LastDownloading{})
 }
 
 func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, error) {
@@ -855,6 +887,16 @@ func (m *Monitor) getDownloading(id uint) (*downloadingStat, bool) {
 	defer m.lock.RUnlock()
 	stat, ok := m.downloading[id]
 	return stat, ok
+}
+
+func (m *Monitor) getDownloadingsID() []uint {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	ids := make([]uint, 0, len(m.downloading))
+	for id := range m.downloading {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func (m *Monitor) getDownloadingCount() int {
