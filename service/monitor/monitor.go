@@ -495,6 +495,23 @@ func (m *Monitor) StopBundleDownloading(bundleID uint, wait bool) {
 	}
 }
 
+func (m *Monitor) AsyncDownloadAsset(id uint, newAssetDir string,
+	sink_ downloader.ProgressSink,
+	result func(asset *Asset, err error),
+	notCheckStatus ...bool) error {
+	_, err := m.GetAsset(id)
+	if err != nil {
+		return err
+	}
+	go func() {
+		asset, err := m.DownloadAsset(context.Background(), id, newAssetDir, sink_, notCheckStatus...)
+		if result != nil {
+			result(asset, err)
+		}
+	}()
+	return nil
+}
+
 func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink, notCheckStatus ...bool) (*Asset, error) {
 	asset, err := m.GetAsset(id)
 	if err != nil {
