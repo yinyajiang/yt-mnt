@@ -543,6 +543,10 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	if asset.QualityFormat != nil {
 		qualityFormat = *asset.QualityFormat
 	}
+	audioFormat := ies.Format{}
+	if asset.AudioFormat != nil {
+		audioFormat = *asset.AudioFormat
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	m.addDownloading(&downloadingStat{
@@ -563,7 +567,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		DownloadFileStem:    &asset.DownloadFileStem,
 		DownloadFileExt:     &asset.DownloadFileExt,
 		MainDownloadFormat:  qualityFormat,
-		AudioDownloadFormat: *asset.AudioFormat,
+		AudioDownloadFormat: audioFormat,
 		DownloaderData:      &asset.DownloaderData,
 	}, sink)
 	if err != nil {

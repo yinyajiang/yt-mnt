@@ -27,7 +27,7 @@ func (d *DirectDownloader) Download(ctx context.Context, opt downloader.Download
 	}
 	ext := common.URLDotExt(opt.MainDownloadFormat.URL)
 	opt.SetExt(ext)
-	if *opt.DownloadFileStem == "" {
+	if opt.DownloadFileStem != nil && *opt.DownloadFileStem == "" {
 		opt.SetStem(time.Now().Format("20060102"))
 	}
 	ok = true
