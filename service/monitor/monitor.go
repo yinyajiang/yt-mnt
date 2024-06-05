@@ -495,7 +495,7 @@ func (m *Monitor) StopBundleDownloading(bundleID uint, wait bool) {
 	}
 }
 
-func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink) (*Asset, error) {
+func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink, notCheckStatus ...bool) (*Asset, error) {
 	asset, err := m.GetAsset(id)
 	if err != nil {
 		return asset, err
@@ -506,11 +506,9 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	if asset.DownloadFileDir == "" {
 		asset.DownloadFileDir = newAssetDir
 	}
-	if asset.Status == AssetStatusFinished {
+	if !(len(notCheckStatus) > 0 && notCheckStatus[0]) && asset.Status == AssetStatusFinished {
 		if fileutil.IsExist(asset.FilePath()) {
 			return asset, nil
-		} else {
-			asset.Status = AssetStatusDownloading
 		}
 	}
 
@@ -557,6 +555,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	defer cancel()
 	defer m.removeDownloading(asset.ID)
 
+	asset.Status = AssetStatusDownloading
 	ok, err := d.Download(ctx, downloader.DownloadOptions{
 		URL:             asset.URL,
 		Quality:         asset.Quality,
