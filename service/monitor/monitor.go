@@ -324,8 +324,8 @@ func (m *Monitor) ListBundlesByWheres(preload bool, assetCount bool, orwheres ..
 		tx = m._db
 	}
 	if len(orwheres) != 0 {
-		for i := 1; i < len(orwheres); i++ {
-			tx = tx.Or(orwheres[i])
+		for _, or := range orwheres {
+			tx = tx.Or(or)
 		}
 		err = tx.Find(&bundles).Error
 	} else {
