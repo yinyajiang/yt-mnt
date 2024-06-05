@@ -81,6 +81,7 @@ func (i *InstagramApi) user(user_name, or_user_id string) (*ies.MediaEntry, erro
 	if err != nil {
 		return nil, err
 	}
+
 	user := ies.MediaEntry{
 		MediaID:     js.Get("user.pk_id").String(),
 		Title:       js.Get("user.username").String(),
@@ -89,6 +90,7 @@ func (i *InstagramApi) user(user_name, or_user_id string) (*ies.MediaEntry, erro
 		Thumbnail:   js.Get("user.profile_pic_url").String(),
 		EntryCount:  js.Get("user.media_count").Int(),
 		IsPrivate:   js.Get("user.is_private").Bool(),
+		Email:       js.Get("user.public_email").String(),
 	}
 	return &user, nil
 }
