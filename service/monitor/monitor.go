@@ -168,13 +168,16 @@ func (m *Monitor) SubscribeURL(url string) (*Bundle, error) {
 	return bundles[0], nil
 }
 
-func (m *Monitor) IsSubscribed(url string) bool {
-	var count int64
+func (m *Monitor) SubscriptionID(url string) (id uint, ok bool) {
+	var ids []uint
 	m._db.Model(&Bundle{}).Where(&Bundle{
 		URL:      url,
 		FeedType: BundleTypeFeed,
-	}).Count(&count)
-	return count > 0
+	}).Pluck("id", &ids)
+	if len(ids) > 0 {
+		return ids[0], true
+	}
+	return 0, false
 }
 
 func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Asset, err error) {
