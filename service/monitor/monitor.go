@@ -549,12 +549,16 @@ func (m *Monitor) StopBundleDownloading(bundleID uint, wait bool) {
 }
 
 func (m *Monitor) AsyncDownloadAsset(id uint, newAssetDir string,
+	begin func(asset *Asset),
 	sink_ downloader.ProgressSink,
 	result func(asset *Asset, err error),
 	notCheckStatus ...bool) error {
-	_, err := m.GetAsset(id)
+	curAsset, err := m.GetAsset(id)
 	if err != nil {
 		return err
+	}
+	if begin != nil {
+		begin(curAsset)
 	}
 	go func() {
 		asset, err := m.DownloadAsset(context.Background(), id, newAssetDir, sink_, notCheckStatus...)
