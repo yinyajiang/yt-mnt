@@ -553,15 +553,12 @@ func (m *Monitor) AsyncDownloadAsset(id uint, newAssetDir string,
 	sink_ downloader.ProgressSink,
 	result func(asset *Asset, err error),
 	notCheckStatus ...bool) error {
-	curAsset, err := m.GetAsset(id)
+	_, err := m.GetAsset(id)
 	if err != nil {
 		return err
 	}
-	if begin != nil {
-		begin(curAsset)
-	}
 	go func() {
-		asset, err := m.DownloadAsset(context.Background(), id, newAssetDir, sink_, notCheckStatus...)
+		asset, err := m.DownloadAsset(context.Background(), id, newAssetDir, begin, sink_, notCheckStatus...)
 		if result != nil {
 			result(asset, err)
 		}
@@ -569,10 +566,13 @@ func (m *Monitor) AsyncDownloadAsset(id uint, newAssetDir string,
 	return nil
 }
 
-func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, sink_ downloader.ProgressSink, notCheckStatus ...bool) (*Asset, error) {
+func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string, begin func(asset *Asset), sink_ downloader.ProgressSink, notCheckStatus ...bool) (*Asset, error) {
 	asset, err := m.GetAsset(id)
 	if err != nil {
 		return asset, err
+	}
+	if begin != nil {
+		begin(asset)
 	}
 	if asset.DownloadFileStem == "" {
 		asset.DownloadFileStem = asset.Title
