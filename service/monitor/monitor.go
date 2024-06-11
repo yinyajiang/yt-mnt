@@ -397,6 +397,14 @@ func (m *Monitor) ListAssets(bundleID uint) (assets []*Asset, err error) {
 	return
 }
 
+func (m *Monitor) FirstAsset(bundleID uint) (*Asset, error) {
+	var asset Asset
+	err := m._db.Where(&Asset{
+		BundleID: bundleID,
+	}).Order("id DESC").First(&asset).Error
+	return &asset, err
+}
+
 func (m *Monitor) ListAssetsWithOffset(bundleID uint, offset, limit int) (assets []*Asset, err error) {
 	if limit <= 0 && offset <= 0 {
 		assets, err = m.ListAssets(bundleID)
@@ -479,7 +487,7 @@ func (m *Monitor) AddExternalDownloadBundle(usedDowner string, bundle *ies.Media
 	return bundles[0], nil
 }
 
-func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title string) string, dir, quality string) ([]*Bundle, error) {
+func (m *Monitor) AssetbasedSelected(explorer *Explorer, preProcBundle func(*Bundle), dir, quality string) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypeUser:
 		if explorer.firstSelectedIndex() == IndexUser {
@@ -491,12 +499,12 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, renameBundle func(title
 	if err != nil {
 		return nil, err
 	}
-	if renameBundle != nil {
-		for _, bundle := range bundles {
-			bundle.Title = renameBundle(bundle.Title)
+	return m.saveBundles(explorer.ie.Name(), func(b *Bundle) (downer string) {
+		if preProcBundle != nil {
+			preProcBundle(b)
 		}
-	}
-	return m.saveBundles(explorer.ie.Name(), nil, bundles, BundleTypeGeneric, dir, quality)
+		return ""
+	}, bundles, BundleTypeGeneric, dir, quality)
 }
 
 func (m *Monitor) StopDownloading(id uint, wait bool) {
@@ -775,6 +783,9 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer s
 		downerName := ""
 		if preSaveBundle != nil {
 			downerName = preSaveBundle(bundle)
+		}
+		if saveBundleType != BundleTypeFeed && len(entry.Entries) == 1 {
+			bundle.SetFlag(BundleFlagSingle)
 		}
 		err = m.storage.Create(bundle)
 		if err != nil {

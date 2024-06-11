@@ -110,6 +110,10 @@ type Bundle struct {
 	_tabname string
 }
 
+const (
+	BundleFlagSingle = 1 << iota
+)
+
 func (f *Bundle) TableName() string {
 	if f._tabname != "" {
 		return f._tabname
@@ -117,7 +121,14 @@ func (f *Bundle) TableName() string {
 	return "bundles"
 }
 
-func (f *Bundle) SetFlags(flag int64, set bool) {
+func (f *Bundle) SetFlag(flag int64) {
+	f.setFlags(flag, true)
+}
+func (f *Bundle) ClearFlag(flag int64) {
+	f.setFlags(flag, false)
+}
+
+func (f *Bundle) setFlags(flag int64, set bool) {
 	if set {
 		f.Flags = f.Flags | flag
 	} else {

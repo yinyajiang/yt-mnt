@@ -68,6 +68,13 @@ func (e *Explorer) IsEnd() bool {
 	return e._itemCaches.isCacheEmpty() && e.loadIsEnd()
 }
 
+func (e *Explorer) IsSelectOne() bool {
+	if len(e.selecteds) != 1 {
+		return false
+	}
+	return e.selecteds[0] >= 0
+}
+
 func (e *Explorer) Root() *ies.MediaEntry {
 	root := e.rootInfo
 	return &root
