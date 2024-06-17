@@ -99,7 +99,8 @@ func ParseYoutubeURL(link string) (kind, id string, err error) {
 }
 
 var (
-	channelRegexp = regexp.MustCompile(`href="https://www.youtube.com/channel/([^"]+)"`)
+	channelRegexp           = regexp.MustCompile(`href="https://www.youtube.com/channel/([^"]+)"`)
+	externalChannelIdRegexp = regexp.MustCompile(`"externalChannelId":"([^"]+)"`)
 )
 
 func ParseWebpageChannelID(u string) (string, error) {
@@ -112,11 +113,15 @@ func ParseWebpageChannelID(u string) (string, error) {
 	resp.Body.Close()
 	if i := strings.Index(string(html), `rel="canonical"`); i != -1 {
 		gs := channelRegexp.FindStringSubmatch(string(html[i:]))
-		if len(gs) <= 1 {
-			return "", errors.New("failed to parse channel id from user page")
+		if len(gs) > 1 {
+			return gs[1], nil
 		}
-		return gs[1], nil
-	} else {
-		return "", errors.New("failed to parse channel id from user page, no canonical link found")
 	}
+	if i := strings.Index(string(html), `"externalChannelId":`); i != -1 {
+		gs := externalChannelIdRegexp.FindStringSubmatch(string(html[i:]))
+		if len(gs) > 1 {
+			return gs[1], nil
+		}
+	}
+	return "", errors.New("failed to parse channel id")
 }
