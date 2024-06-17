@@ -12,12 +12,32 @@ import (
 )
 
 const (
-	kindChannel       = "channel"
-	kindPlaylist      = "playlist"
-	kindPlaylistGroup = "playlist_group"
+	KindChannel       = "channel"
+	KindPlaylist      = "playlist"
+	KindPlaylistGroup = "playlist_group"
 )
 
-func parseYoutubeURL(link string) (kind, id string, err error) {
+func IsYoutubeURL(link string) bool {
+	return strings.Contains(link, "youtube.com")
+}
+
+func GenYoutubeURL(channle, usr, playlist string) (url string, err error) {
+	if channle != "" {
+		url = "https://www.youtube.com/channel/" + channle
+	} else if usr != "" {
+		if !strings.HasPrefix(usr, "@") {
+			usr = "@" + usr
+		}
+		url = "https://www.youtube.com/" + usr + "/playlists"
+	} else if playlist != "" {
+		url = "https://www.youtube.com/playlist?list=" + playlist
+	} else {
+		err = errors.New("youtube user or playlistID is required")
+	}
+	return
+}
+
+func ParseYoutubeURL(link string) (kind, id string, err error) {
 	if !strings.HasPrefix(link, "http") {
 		link = "https://" + link
 	}
@@ -37,7 +57,7 @@ func parseYoutubeURL(link string) (kind, id string, err error) {
 			err = errors.New("invalid playlist link")
 			return
 		}
-		kind = kindPlaylist
+		kind = KindPlaylist
 		return
 	}
 
@@ -49,29 +69,29 @@ func parseYoutubeURL(link string) (kind, id string, err error) {
 			err = errors.New("invalid youtube channel link")
 			return
 		}
-		kind = kindChannel
+		kind = KindChannel
 		id = parts[2]
 		return
 	}
 
 	// - https://www.youtube.com/@fxigr1/playlists
 	if strings.HasPrefix(path, "/@") && (strings.HasSuffix(path, "/playlists") || strings.HasSuffix(path, "/playlists/")) {
-		id, err = parseWebpageUserID(parsed.String())
+		id, err = ParseWebpageChannelID(parsed.String())
 		if err != nil {
 			return
 		}
-		kind = kindPlaylistGroup
+		kind = KindPlaylistGroup
 		return
 	}
 
 	// - https://www.youtube.com/user/fxigr1
 	// - https://www.youtube.com/@fxigr1
 	if strings.HasPrefix(path, "/user") || strings.HasPrefix(path, "/@") {
-		id, err = parseWebpageUserID(parsed.String())
+		id, err = ParseWebpageChannelID(parsed.String())
 		if err != nil {
 			return
 		}
-		kind = kindChannel
+		kind = KindChannel
 		return
 	}
 	err = errors.New("unsupported link format")
@@ -82,7 +102,7 @@ var (
 	channelRegexp = regexp.MustCompile(`href="https://www.youtube.com/channel/([^"]+)"`)
 )
 
-func parseWebpageUserID(u string) (string, error) {
+func ParseWebpageChannelID(u string) (string, error) {
 	var resp *http.Response
 	resp, err := http.Get(u)
 	if err != nil {

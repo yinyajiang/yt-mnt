@@ -36,6 +36,7 @@ type Asset struct {
 
 	URL           string
 	Quality       string
+	Duration      int64
 	QualityFormat *ies.Format `gorm:"type:json"`
 	AudioFormat   *ies.Format `gorm:"type:json"`
 
@@ -109,10 +110,6 @@ type Bundle struct {
 
 	_tabname string
 }
-
-const (
-	BundleFlagSingle = 1 << iota
-)
 
 func (f *Bundle) TableName() string {
 	if f._tabname != "" {

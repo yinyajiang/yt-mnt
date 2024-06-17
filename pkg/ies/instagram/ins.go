@@ -43,15 +43,15 @@ func (i *InstagramIE) IsMatched(link string) bool {
 }
 
 func (i *InstagramIE) ParseRoot(link string, _ ...ies.ParseOptions) (*ies.MediaEntry, *ies.RootToken, error) {
-	kind, usr, err := parseInstagramURL(link)
+	kind, usr, err := ParseInstagramURL(link)
 	if err != nil {
 		return nil, nil, err
 	}
 	var entry *ies.MediaEntry
 	switch kind {
-	case kindUser:
+	case KindUser:
 		entry, err = i.client.User(usr)
-	case kindStory:
+	case KindStory:
 		err = errors.New("instagram story is not supported")
 	}
 	if err != nil {

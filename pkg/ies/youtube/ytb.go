@@ -45,24 +45,24 @@ func (y *YoutubeIE) IsMatched(link string) bool {
 }
 
 func (y *YoutubeIE) ParseRoot(link string, _ ...ies.ParseOptions) (*ies.MediaEntry, *ies.RootToken, error) {
-	linkkind, linkid, err := parseYoutubeURL(link)
+	linkkind, linkid, err := ParseYoutubeURL(link)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var entry *ies.MediaEntry
 	switch linkkind {
-	case kindChannel:
+	case KindChannel:
 		entry, err = y.client.Channel(linkid)
 		if err == nil {
 			entry.MediaType = ies.MediaTypeUser
 		}
-	case kindPlaylist:
+	case KindPlaylist:
 		entry, err = y.client.Playlist(linkid)
 		if err == nil {
 			entry.MediaType = ies.MediaTypePlaylist
 		}
-	case kindPlaylistGroup:
+	case KindPlaylistGroup:
 		entry, err = y.client.Channel(linkid)
 		if err == nil {
 			reserve := YoutubeReserve{

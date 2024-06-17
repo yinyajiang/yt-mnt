@@ -3,6 +3,7 @@ package instagram
 import (
 	"errors"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -11,22 +12,38 @@ var (
 )
 
 const (
-	kindUser = iota
-	kindStory
+	KindUser = iota
+	KindStory
 )
 
-func parseInstagramURL(link string) (kind int, user string, err error) {
+func GenInstagramURL(usr string) (url string, err error) {
+	if usr != "" {
+		if strings.HasPrefix(usr, "@") && len(usr) > 1 {
+			usr = usr[1:]
+		}
+		url = "https://www.instagram.com/" + usr + "/"
+	} else {
+		err = errors.New("instagram user is required")
+	}
+	return
+}
+
+func IsInstragramURL(link string) bool {
+	return strings.Contains(link, "instagram.com")
+}
+
+func ParseInstagramURL(link string) (kind int, user string, err error) {
 	matchs := storyRegexp.FindStringSubmatch(link)
 	if len(matchs) == 2 {
 		user = matchs[1]
-		kind = kindStory
+		kind = KindStory
 		return
 	}
 
 	matchs = userRegexp.FindStringSubmatch(link)
 	if len(matchs) == 2 {
 		user = matchs[1]
-		kind = kindUser
+		kind = KindUser
 	}
 	if user == "p" {
 		user = ""

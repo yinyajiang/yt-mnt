@@ -17,6 +17,12 @@ import (
 
 type ProgressSink func(total, downloaded, speed, eta int64, percent float64)
 
+type RefillInfo struct {
+	Title     *string
+	Thumbnail *string
+	Duration  *int64
+}
+
 type Downloader interface {
 	Name() string
 	SupportedIE() []string
@@ -35,11 +41,14 @@ type DownloadOptions struct {
 	AudioDownloadFormat ies.Format
 	DownloadedSize      int64
 	DownloadPercent     float64
+	DownloadFileDir     string
 
-	DownloadFileDir  string
+	//in out params
 	DownloadFileStem *string
 	DownloadFileExt  *string
 	DownloaderData   *string
+
+	RefillInfo
 }
 
 func (opt *DownloadOptions) FilePath() string {
