@@ -481,13 +481,12 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 	return result, nil
 }
 
-func (m *Monitor) SubscribeAndAddAsset(url string, feedType int, bundle *ies.MediaEntry, dir, quality string) (*Bundle, error) {
-	subscribeURL, err := m.convert2SubscribeURL(url, feedType)
-	if err != nil {
-		return nil, err
+func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry, dir, quality string) (*Bundle, error) {
+	if _, ok := m.SubscriptionID(url); ok {
+		return nil, fmt.Errorf("feed already exists")
 	}
-	m.SubscriptionID(subscribeURL)
-	explorer, err := m.OpenExplorer(subscribeURL, false)
+
+	explorer, err := m.OpenExplorer(url, false)
 	if err != nil {
 		return nil, err
 	}
@@ -498,15 +497,15 @@ func (m *Monitor) SubscribeAndAddAsset(url string, feedType int, bundle *ies.Med
 		return nil, err
 	}
 	feed := feeds[0]
-	if len(bundle.Entries) != 0 {
+	if len(entries) != 0 {
 		var assets []*Asset
-		assets, err = m.saveAssets(feed.IE, "", bundle.Entries, feed, dir, quality)
+		assets, err = m.saveAssets(feed.IE, "", entries, feed, dir, quality)
 		feed.AssetCount = int64(len(assets))
 	}
 	return feed, err
 }
 
-func (m *Monitor) convert2SubscribeURL(hintURL string, feedType int) (subscribeURL string, err error) {
+func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeURL string, err error) {
 	if feedType <= 0 {
 		return hintURL, nil
 	}
