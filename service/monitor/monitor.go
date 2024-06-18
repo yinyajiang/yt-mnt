@@ -538,6 +538,8 @@ func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeU
 				}
 				err = e
 				return
+			} else {
+				subscribeURL = hintURL
 			}
 		} else {
 			err = fmt.Errorf("playlist unsupported subscribe site")
