@@ -3,6 +3,7 @@ package direct
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/yinyajiang/yt-mnt/pkg/common"
@@ -19,6 +20,26 @@ func init() {
 }
 
 type DirectDownloader struct {
+}
+
+func (m *DirectDownloader) Delete(opt downloader.DeleteOptions, deleteFile bool) {
+	if !deleteFile {
+		return
+	}
+	if !opt.HasAudioFormat {
+		if common.IsExistsFile(opt.FilePath()) {
+			os.Remove(opt.FilePath())
+		}
+		return
+	}
+	vPath := opt.FilePath() + ".video"
+	if common.IsExistsFile(vPath) {
+		os.Remove(opt.FilePath())
+	}
+	aPath := opt.FilePath() + ".audio"
+	if common.IsExistsFile(aPath) {
+		os.Remove(opt.FilePath())
+	}
 }
 
 func (d *DirectDownloader) Download(ctx context.Context, opt downloader.DownloadOptions, sink downloader.ProgressSink) (ok bool, err error) {

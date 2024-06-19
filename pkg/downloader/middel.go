@@ -9,6 +9,9 @@ type MiddleDownloader struct {
 	d Downloader
 }
 
+func (m *MiddleDownloader) Delete(downloaderData DeleteOptions, deleteFile bool) {
+	m.d.Delete(downloaderData, deleteFile)
+}
 func (m *MiddleDownloader) Download(ctx context.Context, opt DownloadOptions, sink_ ProgressSink) (ok bool, err error) {
 	if opt.DownloadFileExt == nil || opt.DownloadFileStem == nil {
 		return false, fmt.Errorf("DownloadFileExt or DownloadFileStem must be set")

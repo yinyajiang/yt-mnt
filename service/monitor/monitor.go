@@ -234,12 +234,20 @@ func (m *Monitor) Unsubscribe(id uint, deleteEmpty bool) (isDeleted bool, err er
 	}
 }
 
-func (m *Monitor) DeleteAsset(id uint) {
+func (m *Monitor) DeleteAsset(id uint, remainFinished bool) {
 	if id <= 0 {
 		return
 	}
 	m.StopDownloading(id, true)
 	m._lastBundleDirty = true
+
+	var aset Asset
+	m._db.First(&aset, &Asset{
+		Model: gorm.Model{
+			ID: id,
+		},
+	})
+	m.deleteDownloaderItem(&aset, remainFinished)
 
 	m.storage.Delete(&Asset{
 		Model: gorm.Model{
@@ -258,7 +266,15 @@ func (m *Monitor) DeleteBundle(id uint, remainFinished bool) {
 	}
 
 	deleteBundle := true
+	assets := []*Asset{}
+
 	if remainFinished {
+		m._db.Model(&Asset{}).Not(&Asset{
+			Status: AssetStatusFinished,
+		}).Where(&Asset{
+			BundleID: id,
+		}).Find(&assets)
+
 		m._db.Model(&Asset{}).Not(&Asset{
 			Status: AssetStatusFinished,
 		}).Where(&Asset{
@@ -271,6 +287,9 @@ func (m *Monitor) DeleteBundle(id uint, remainFinished bool) {
 		}).Count(&count)
 		deleteBundle = count == 0
 	} else {
+		m._db.Find(&assets, &Asset{
+			BundleID: id,
+		})
 		m.storage.Delete(&Asset{
 			BundleID: id,
 		})
@@ -284,6 +303,10 @@ func (m *Monitor) DeleteBundle(id uint, remainFinished bool) {
 			},
 		})
 	}
+
+	for _, aset := range assets {
+		m.deleteDownloaderItem(aset, remainFinished)
+	}
 }
 
 func (m *Monitor) ClearTypeBundles(remainFinished bool, bundleTypes ...int) []uint {
@@ -296,6 +319,27 @@ func (m *Monitor) ClearTypeBundles(remainFinished bool, bundleTypes ...int) []ui
 	return deleted
 }
 
+func (m *Monitor) deleteDownloaderItem(asset *Asset, remainFinished bool) {
+	if asset == nil {
+		return
+	}
+	deleteFile := !remainFinished
+	if !deleteFile && asset.Status != AssetStatusFinished {
+		deleteFile = true
+	}
+	d := downloader.GetByName(asset.Downloader)
+	if d == nil {
+		return
+	}
+	d.Delete(downloader.DeleteOptions{
+		HasAudioFormat:   asset.AudioFormat != nil,
+		DownloadFileDir:  asset.DownloadFileDir,
+		DownloadFileStem: asset.DownloadFileStem,
+		DownloadFileExt:  asset.DownloadFileExt,
+		DownloaderData:   asset.DownloaderData,
+	}, deleteFile)
+}
+
 func (m *Monitor) ClearAll() {
 	m.StopAllDownloading(true)
 	bundles, _ := m.ListBundlesByWheres(false, false)
@@ -303,6 +347,12 @@ func (m *Monitor) ClearAll() {
 		m.DeleteBundle(bundle.ID, false)
 	}
 	m.storage.DeleteAll(&Bundle{})
+
+	var asets []*Asset
+	m._db.Find(&asets)
+	for _, aset := range asets {
+		m.deleteDownloaderItem(aset, true)
+	}
 	m.storage.DeleteAll(&Asset{})
 	m.storage.DeleteAll(&LastDownloading{})
 }

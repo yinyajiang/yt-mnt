@@ -32,6 +32,7 @@ type Downloader interface {
 		ok==true 表示是可恢复的失败
 	*/
 	Download(ctx context.Context, opt DownloadOptions, sink ProgressSink) (ok bool, err error)
+	Delete(opts DeleteOptions, deleteFile bool)
 }
 
 type DownloadOptions struct {
@@ -49,6 +50,21 @@ type DownloadOptions struct {
 	DownloaderData   *string
 
 	RefillInfo
+}
+
+type DeleteOptions struct {
+	DownloadFileDir  string
+	DownloadFileStem string
+	DownloadFileExt  string
+	DownloaderData   string
+	HasAudioFormat   bool
+}
+
+func (opt *DeleteOptions) FilePath() string {
+	if opt.DownloadFileExt != "" && !strings.HasPrefix(opt.DownloadFileExt, ".") {
+		opt.DownloadFileExt = "." + opt.DownloadFileExt
+	}
+	return filepath.Join(opt.DownloadFileDir, opt.DownloadFileStem+opt.DownloadFileExt)
 }
 
 func (opt *DownloadOptions) FilePath() string {

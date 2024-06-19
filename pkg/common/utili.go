@@ -62,3 +62,8 @@ func LocalExecutableFile(name string) string {
 	executableDir := filepath.Dir(executablePath)
 	return ExecutableFile(filepath.Join(executableDir, name))
 }
+
+func IsExistsFile(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
