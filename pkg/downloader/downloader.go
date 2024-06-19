@@ -5,12 +5,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"log"
 
-	"github.com/duke-git/lancet/v2/fileutil"
-	"github.com/duke-git/lancet/v2/random"
 	"github.com/yinyajiang/yt-mnt/pkg/common"
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
@@ -74,24 +71,18 @@ func (opt *DownloadOptions) FilePath() string {
 	return filepath.Join(opt.DownloadFileDir, *opt.DownloadFileStem+*opt.DownloadFileExt)
 }
 
-func (opt *DownloadOptions) SetFileName(name string) {
+func (opt *DownloadOptions) SetExistFileName(name string) {
 	if name == "" {
 		return
 	}
+	name = filepath.Base(name)
+
 	i := strings.Index(name, ".")
 	if i == -1 || i == 0 || i == len(name)-1 {
 		return
 	}
 	opt.SetExt(name[i:])
 	opt.SetStem(name[:i])
-	if !fileutil.IsExist(opt.FilePath()) {
-		return
-	}
-	*opt.DownloadFileStem += time.Now().Format("0102150405")
-	if !fileutil.IsExist(opt.FilePath()) {
-		return
-	}
-	*opt.DownloadFileStem += random.RandString(6)
 }
 
 func (opt *DownloadOptions) SetExt(ext string) {
