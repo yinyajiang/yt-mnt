@@ -121,6 +121,9 @@ func (m *Monitor) OpenExplorer(url string, isPlain bool, opt ...ies.ParseOptions
 	explorer.url = url
 	explorer.rootInfo = *info
 	explorer.rootToken = *rootToken
+	if isPlain {
+		explorer.SetPlain()
+	}
 	return explorer, nil
 }
 
@@ -376,23 +379,15 @@ func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, er
 		}
 	}()
 
-	var tx *gorm.DB
-	if preload {
-		tx = m._db.Preload(clause.Associations)
-	} else {
-		tx = m._db
-	}
-	err = tx.First(&bundle, Bundle{
+	bundles, err := m.ListBundlesByWheres(preload, assetCount, &Bundle{
 		Model: gorm.Model{
 			ID: id,
 		},
-	}).Error
-
-	if err == nil && assetCount {
-		tx.Model(&Asset{}).Where(&Asset{
-			BundleID: id,
-		}).Count(&bundle.AssetCount)
+	})
+	if err != nil {
+		return nil, err
 	}
+	bundle = *bundles[0]
 	return &bundle, err
 }
 
@@ -415,22 +410,24 @@ func (m *Monitor) ListBundlesByWheres(preload bool, assetCount bool, orwheres ..
 	} else {
 		tx = m._db.Order("id DESC")
 	}
-	if len(orwheres) != 0 {
+	if len(orwheres) > 1 {
 		for _, or := range orwheres {
 			tx = tx.Or(or)
 		}
 		err = tx.Find(&bundles).Error
+	} else if len(orwheres) == 1 {
+		err = tx.Find(&bundles, orwheres[0]).Error
 	} else {
 		err = tx.Find(&bundles).Error
 	}
-
 	if err == nil && assetCount {
 		for _, bundle := range bundles {
 			m._db.Model(&Asset{}).Where(&Asset{
 				BundleID: bundle.ID,
 			}).Count(&bundle.AssetCount)
 			m._db.Model(&Asset{}).Where(&Asset{
-				Status: AssetStatusFinished,
+				Status:   AssetStatusFinished,
+				BundleID: bundle.ID,
 			}).Count(&bundle.AssetFinishedCount)
 		}
 	}
