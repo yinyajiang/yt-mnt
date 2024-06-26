@@ -590,11 +590,15 @@ func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeU
 	return
 }
 
-func (m *Monitor) AddExternalGenericBundle(usedDowner string, bundle *ies.MediaEntry, dir, quality string) (*Bundle, error) {
+func (m *Monitor) AddExternalGenericBundle(usedDowner string, bundle *ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
 	if usedDowner == "" {
 		return nil, fmt.Errorf("downloader not specified")
 	}
 	bundles, err := m.saveBundles("external", func(b *Bundle) (string, bool) {
+		if len(reUseID) > 0 && reUseID[0] > 0 {
+			b.ID = reUseID[0]
+			return usedDowner, false
+		}
 		return usedDowner, true
 	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, dir, quality, false)
 	if err != nil {
@@ -603,12 +607,19 @@ func (m *Monitor) AddExternalGenericBundle(usedDowner string, bundle *ies.MediaE
 	return bundles[0], nil
 }
 
-func (m *Monitor) AddUnparseFeed(url string, feedType int) (*Bundle, error) {
+func (m *Monitor) AddUnparseBundle(url string, feedType int) (*Bundle, error) {
+	saveBundleType := BundleTypeGeneric
+	if feedType == FeedTypeUser || feedType == FeedTypePlaylist {
+		saveBundleType = BundleTypeFeed
+	}
 	feeds, err := m.saveBundles("", func(b *Bundle) (downer string, isCreate bool) {
 		b.URL = url
+		if saveBundleType == BundleTypeFeed {
+			b.FeedType = feedType
+		}
 		b.SetFlag(BundleFlagUnparse)
 		return "", true
-	}, []*ies.MediaEntry{{}}, BundleTypeFeed, "", "", false)
+	}, []*ies.MediaEntry{{}}, saveBundleType, "", "", false)
 	if err != nil {
 		return nil, err
 	}
