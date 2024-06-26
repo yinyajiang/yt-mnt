@@ -182,6 +182,10 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Ass
 	if err != nil {
 		return
 	}
+	if feed.Flag(BundleFlagUnparse) {
+		err = fmt.Errorf("feed %d is unparse", feedid)
+		return
+	}
 	ie, err := ies.GetIE(feed.IE)
 	if err != nil {
 		return
@@ -361,24 +365,6 @@ func (m *Monitor) ClearAll() {
 }
 
 func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, error) {
-	var bundle Bundle
-	var err error
-
-	if !m._lastBundleDirty && m._lastBundle.ID == id && m._lastBundlePreload == preload &&
-		(m._lastBundleAssetCount || !assetCount) {
-		bundle = m._lastBundle
-		return &bundle, nil
-	}
-
-	defer func() {
-		if bundle.ID > 0 && err == nil {
-			m._lastBundleDirty = false
-			m._lastBundle = bundle
-			m._lastBundlePreload = preload
-			m._lastBundleAssetCount = assetCount
-		}
-	}()
-
 	bundles, err := m.ListBundlesByWheres(preload, assetCount, &Bundle{
 		Model: gorm.Model{
 			ID: id,
@@ -387,8 +373,7 @@ func (m *Monitor) GetBundle(id uint, preload bool, assetCount bool) (*Bundle, er
 	if err != nil {
 		return nil, err
 	}
-	bundle = *bundles[0]
-	return &bundle, err
+	return bundles[0], err
 }
 
 func (m *Monitor) ListTypeBundles(preload bool, assetCount bool, bundleTypes ...int) ([]*Bundle, error) {
@@ -474,7 +459,7 @@ func (m *Monitor) ListAssetsWithOffset(bundleID uint, offset, limit int) (assets
 	return
 }
 
-func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
+func (m *Monitor) SubscribeSelected(explorer *Explorer, reUseID ...uint) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypePlaylist:
 		if explorer.firstSelectedIndex() != IndexRoot {
@@ -520,7 +505,13 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 		return existBundles, err
 	}
 
-	result, err := m.saveBundles(explorer.ie.Name(), nil, saveBundles, BundleTypeFeed, "", "", false)
+	result, err := m.saveBundles(explorer.ie.Name(), func(b *Bundle) (downer string, isCreate bool) {
+		if len(reUseID) > 0 && reUseID[0] > 0 {
+			b.ID = reUseID[0]
+			return "", false
+		}
+		return "", true
+	}, saveBundles, BundleTypeFeed, "", "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +519,7 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer) ([]*Bundle, error) {
 	return result, nil
 }
 
-func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry, dir, quality string) (*Bundle, error) {
+func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
 	if _, ok := m.SubscriptionID(url); ok {
 		return nil, fmt.Errorf("feed already exists")
 	}
@@ -539,7 +530,7 @@ func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry,
 	}
 	defer explorer.Close()
 	explorer.Select(IndexRoot)
-	feeds, err := m.SubscribeSelected(explorer)
+	feeds, err := m.SubscribeSelected(explorer, reUseID...)
 	if err != nil {
 		return nil, err
 	}
@@ -603,13 +594,25 @@ func (m *Monitor) AddExternalGenericBundle(usedDowner string, bundle *ies.MediaE
 	if usedDowner == "" {
 		return nil, fmt.Errorf("downloader not specified")
 	}
-	bundles, err := m.saveBundles("external", func(b *Bundle) string {
-		return usedDowner
+	bundles, err := m.saveBundles("external", func(b *Bundle) (string, bool) {
+		return usedDowner, true
 	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, dir, quality, false)
 	if err != nil {
 		return nil, err
 	}
 	return bundles[0], nil
+}
+
+func (m *Monitor) AddUnparseFeed(url string, feedType int) (*Bundle, error) {
+	feeds, err := m.saveBundles("", func(b *Bundle) (downer string, isCreate bool) {
+		b.URL = url
+		b.SetFlag(BundleFlagUnparse)
+		return "", true
+	}, []*ies.MediaEntry{{}}, BundleTypeFeed, "", "", false)
+	if err != nil {
+		return nil, err
+	}
+	return feeds[0], nil
 }
 
 func (m *Monitor) AddExternalFeedBundle(feedIE string, bundle *ies.MediaEntry, dir, quality string, saveFeedBundleAssets bool) (*Bundle, error) {
@@ -635,11 +638,11 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, preProcBundle func(*Bun
 	if err != nil {
 		return nil, err
 	}
-	return m.saveBundles(explorer.ie.Name(), func(b *Bundle) (downer string) {
+	return m.saveBundles(explorer.ie.Name(), func(b *Bundle) (downer string, isCreate bool) {
 		if preProcBundle != nil {
 			preProcBundle(b)
 		}
-		return ""
+		return "", true
 	}, bundles, BundleTypeGeneric, dir, quality, false)
 }
 
@@ -741,12 +744,15 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		}
 	}
 
-	sink := func(total, downloaded, speed, eta int64, percent float64) {
+	sink := func(total, downloaded, speed, eta int64, percent float64, videoDuration int64) {
 		asset.DownloadTotalSize = total
 		asset.DownloadedSize = downloaded
 		asset.DownloadPercent = percent
+		if videoDuration > 0 && asset.Duration == 0 {
+			asset.Duration = videoDuration
+		}
 		if sink_ != nil {
-			sink_(total, downloaded, speed, eta, percent)
+			sink_(total, downloaded, speed, eta, percent, asset.Duration)
 		}
 	}
 
@@ -899,7 +905,7 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer string), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer string, isCreate bool), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
 	for _, entry := range bundleMedias {
 		if m.storage.IsClosed() {
@@ -918,15 +924,23 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer s
 			LastUpdate: time.Now(),
 			Uploader:   entry.Uploader,
 		}
-		if saveBundleType == BundleTypeFeed && bundle.FeedType == 0 {
+		downerName := ""
+		isCreate := true
+		if preSaveBundle != nil {
+			downerName, isCreate = preSaveBundle(bundle)
+		}
+
+		if bundle.BundleType == BundleTypeFeed && bundle.FeedType == 0 {
 			err = fmt.Errorf("feed unsupported media type: %d", entry.MediaType)
 			continue
 		}
-		downerName := ""
-		if preSaveBundle != nil {
-			downerName = preSaveBundle(bundle)
+
+		if isCreate {
+			err = m.storage.Create(bundle)
+		} else {
+			err = m.storage.Save(bundle)
 		}
-		err = m.storage.Create(bundle)
+
 		if err != nil {
 			continue
 		}

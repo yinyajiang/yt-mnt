@@ -12,7 +12,7 @@ import (
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 )
 
-type ProgressSink func(total, downloaded, speed, eta int64, percent float64)
+type ProgressSink func(total, downloaded, speed, eta int64, percent float64, videoDuration int64)
 
 type RefillInfo struct {
 	Title     *string

@@ -85,6 +85,7 @@ const (
 
 const (
 	BundleFlagExternal = 1 << iota
+	BundleFlagUnparse
 )
 
 type Bundle struct {

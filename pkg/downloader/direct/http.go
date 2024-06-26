@@ -122,12 +122,12 @@ loop:
 						eta = int64(float64(total-downloaded) / speed)
 					}
 				}
-				sink(total, downloaded, int64(speed), eta, percent)
+				sink(total, downloaded, int64(speed), eta, percent, 0)
 			}
 		}
 	}
 	if sink != nil {
-		sink(total, downloaded, 0, 0, 100)
+		sink(total, downloaded, 0, 0, 100, 0)
 	}
 	return nil
 }
