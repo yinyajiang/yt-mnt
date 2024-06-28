@@ -36,6 +36,9 @@ type Explorer struct {
 	_time       time.Time
 	_uuid       string
 	_itemCaches pageItemCaches
+
+	userData      map[string]any
+	exploredCount int
 }
 
 const (
@@ -50,10 +53,29 @@ func newExplorer() *Explorer {
 	var explorer Explorer
 	explorer._time = time.Now()
 	explorer._uuid = uuid.New().String()
+	explorer.userData = make(map[string]any)
 	explorer._itemCaches = pageItemCaches{
 		explorer: &explorer,
 	}
 	return &explorer
+}
+
+func (e *Explorer) SetUserData(key string, value any) {
+	if key == "" {
+		return
+	}
+	if e.userData == nil {
+		e.userData = make(map[string]any)
+	}
+	e.userData[key] = value
+}
+
+func (e *Explorer) GetUserData(key string) (v any, ok bool) {
+	if e.userData == nil || key == "" {
+		return nil, false
+	}
+	v, ok = e.userData[key]
+	return
 }
 
 func (e *Explorer) IsValid() bool {
@@ -107,7 +129,7 @@ func (e *Explorer) Page() []*ies.MediaEntry {
 
 func (e *Explorer) AllPage(loadLeft ...bool) []*ies.MediaEntry {
 	if len(loadLeft) > 0 && loadLeft[0] {
-		e.loadNextAll()
+		e.loadAll()
 	}
 	return e.allPage
 }
@@ -123,8 +145,16 @@ func (e *Explorer) PageCount() int {
 	return len(e.allPage) - e.pageIndex
 }
 
+func (e *Explorer) ExploreAll() ([]*ies.MediaEntry, error) {
+	ret, err := e._itemCaches.exploreAll()
+	e.exploredCount = len(ret)
+	return ret, err
+}
+
 func (e *Explorer) ExploreNextAll() ([]*ies.MediaEntry, error) {
-	return e._itemCaches.exploreNextAll()
+	ret, err := e._itemCaches.exploreNextAll()
+	e.exploredCount += len(ret)
+	return ret, err
 }
 
 func (e *Explorer) ExploreNext(max_ ...int) ([]*ies.MediaEntry, error) {
@@ -132,7 +162,13 @@ func (e *Explorer) ExploreNext(max_ ...int) ([]*ies.MediaEntry, error) {
 	if len(max_) > 0 {
 		max = max_[0]
 	}
-	return e._itemCaches.exploreNext(max)
+	ret, err := e._itemCaches.exploreNext(max)
+	e.exploredCount += len(ret)
+	return ret, err
+}
+
+func (e *Explorer) ExploredCount() int {
+	return e.exploredCount
 }
 
 func (e *Explorer) ResetSelected() {
@@ -228,7 +264,7 @@ func (e *Explorer) Selected(enableConvertUser bool) ([]*ies.MediaEntry, error) {
 	// 筛选类型
 	for _, selectedType := range e.selectedTypes {
 		if selectedType.allPage {
-			e.loadNextAll()
+			e.loadAll()
 		}
 		for i, entry := range e.allPage {
 			if entry.MediaType == selectedType.mediaType {
@@ -249,7 +285,7 @@ func (e *Explorer) Selected(enableConvertUser bool) ([]*ies.MediaEntry, error) {
 		case IndexExplored:
 			return e.allPage, nil
 		case IndexAllPage:
-			e.loadNextAll()
+			e.loadAll()
 			return e.allPage, nil
 		case IndexRoot, IndexUser:
 			item, err := e.Item(index, enableConvertUser)
@@ -264,7 +300,7 @@ func (e *Explorer) Selected(enableConvertUser bool) ([]*ies.MediaEntry, error) {
 	return selected, nil
 }
 
-func (e *Explorer) Size() int {
+func (e *Explorer) AllLoadSize() int {
 	return len(e.allPage)
 }
 
@@ -300,13 +336,20 @@ func (e *Explorer) loadIsEnd() bool {
 	return e.nextToken.IsEnd
 }
 
-func (e *Explorer) loadNextAll() ([]*ies.MediaEntry, error) {
+func (e *Explorer) loadAll() ([]*ies.MediaEntry, error) {
+	before := len(e.allPage)
 	for !e.loadIsEnd() {
 		if _, err := e.loadNextPage(); err != nil {
 			return nil, err
 		}
 	}
+	e.pageIndex = before
 	return e.allPage, nil
+}
+
+func (e *Explorer) loadNextAll() ([]*ies.MediaEntry, error) {
+	_, err := e.loadAll()
+	return e.Page(), err
 }
 
 func (e *Explorer) loadNextPage() ([]*ies.MediaEntry, error) {
@@ -328,7 +371,6 @@ func (e *Explorer) loadNextPage() ([]*ies.MediaEntry, error) {
 		e.allPage = append(e.allPage, page...)
 	}
 	e.pageIndex = before
-
 	return e.Page(), nil
 }
 
@@ -339,6 +381,15 @@ type pageItemCaches struct {
 
 func (p *pageItemCaches) isCacheEmpty() bool {
 	return len(p._cacheItems) == 0
+}
+
+func (p *pageItemCaches) exploreAll() ([]*ies.MediaEntry, error) {
+	p.clear()
+	all, err := p.explorer.loadAll()
+	if len(all) != 0 {
+		err = nil
+	}
+	return all, err
 }
 
 func (p *pageItemCaches) exploreNextAll() ([]*ies.MediaEntry, error) {
@@ -366,6 +417,9 @@ func (p *pageItemCaches) exploreNext(max int) ([]*ies.MediaEntry, error) {
 	}
 	pages, err := p.explorer.loadNextPage()
 	if err != nil {
+		if len(p._cacheItems) != 0 {
+			return p.pop(max), nil
+		}
 		return nil, err
 	}
 	p.append(pages)
