@@ -173,6 +173,7 @@ func (e *Explorer) ExploredCount() int {
 
 func (e *Explorer) ResetSelected() {
 	e.selecteds = []int{}
+	e.selectedTypes = []selectedType{}
 }
 
 func (e *Explorer) Select(indexs ...int) {
