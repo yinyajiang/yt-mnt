@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -11,6 +12,16 @@ type MiddleDownloader struct {
 
 func (m *MiddleDownloader) Delete(downloaderData DeleteOptions, deleteFile bool) {
 	m.d.Delete(downloaderData, deleteFile)
+}
+
+func (m *MiddleDownloader) ChangeFileTitle(opt DownloadOptions, title string) error {
+	if opt.DownloadFileStem == nil {
+		return errors.New("downloadFileStem is nil")
+	}
+	if title == "" {
+		return errors.New("title is empty")
+	}
+	return m.d.ChangeFileTitle(opt, title)
 }
 func (m *MiddleDownloader) Download(ctx context.Context, opt DownloadOptions, sink_ ProgressSink) (ok bool, err error) {
 	if opt.DownloadFileExt == nil || opt.DownloadFileStem == nil {

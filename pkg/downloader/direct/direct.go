@@ -42,6 +42,25 @@ func (m *DirectDownloader) Delete(opt downloader.DeleteOptions, deleteFile bool)
 	}
 }
 
+func (m *DirectDownloader) ChangeFileTitle(opt downloader.DownloadOptions, title string) error {
+	if opt.DownloadFileStem == nil {
+		return errors.New("downloadFileStem is nil")
+	}
+	if title == "" {
+		return errors.New("title is empty")
+	}
+	vPath := opt.FilePath() + ".video"
+	aPath := opt.FilePath() + ".audio"
+	if _, err := os.Stat(vPath); err == nil {
+		os.Remove(vPath)
+	}
+	if _, err := os.Stat(aPath); err == nil {
+		os.Remove(aPath)
+	}
+	opt.SetStem(title)
+	return nil
+}
+
 func (d *DirectDownloader) Download(ctx context.Context, opt downloader.DownloadOptions, sink downloader.ProgressSink) (ok bool, err error) {
 	if opt.MainDownloadFormat.URL == "" {
 		return false, errors.New("no formats available for direct download")

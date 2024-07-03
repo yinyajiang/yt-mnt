@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -427,6 +429,56 @@ func (m *Monitor) GetAsset(id uint) (*Asset, error) {
 		},
 	}).Error
 	return &entry, err
+}
+
+func (m *Monitor) ChangeBundleTitle(id uint, title string) error {
+	if title == "" {
+		return fmt.Errorf("title is empty")
+	}
+	return m.storage.Updates(&Bundle{
+		Model: gorm.Model{
+			ID: id,
+		},
+		Title: title,
+	})
+}
+
+func (m *Monitor) ChangeAssetTitle(id uint, title string) error {
+	if title == "" {
+		return fmt.Errorf("title is empty")
+	}
+
+	asset, err := m.GetAsset(id)
+	if err != nil {
+		return err
+	}
+	if asset.Status == AssetStatusFinished {
+		stem := common.ReplaceWrongFileChars(title)
+		if e := os.Rename(asset.FilePath(), filepath.Join(asset.DownloadFileDir, stem+asset.DownloadFileExt)); e == nil {
+			asset.DownloadFileStem = stem
+		}
+	} else {
+		d := downloader.GetByName(asset.Downloader)
+		if d == nil {
+			return fmt.Errorf("downloader not found: %s", asset.Downloader)
+		}
+		err = d.ChangeFileTitle(downloader.DownloadOptions{
+			DownloadFileDir:  asset.DownloadFileDir,
+			DownloadFileStem: &asset.DownloadFileStem,
+			DownloaderData:   &asset.DownloaderData,
+		}, title)
+	}
+	if err != nil {
+		return err
+	}
+	return m.storage.Updates(&Asset{
+		Model: gorm.Model{
+			ID: id,
+		},
+		DownloadFileStem: asset.DownloadFileStem,
+		DownloaderData:   asset.DownloaderData,
+		Title:            title,
+	})
 }
 
 func (m *Monitor) ListAssets(bundleID uint) (assets []*Asset, err error) {

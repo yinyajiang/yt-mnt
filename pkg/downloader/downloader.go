@@ -30,6 +30,7 @@ type Downloader interface {
 	*/
 	Download(ctx context.Context, opt DownloadOptions, sink ProgressSink) (ok bool, err error)
 	Delete(opts DeleteOptions, deleteFile bool)
+	ChangeFileTitle(opt DownloadOptions, title string) error
 }
 
 type DownloadOptions struct {
