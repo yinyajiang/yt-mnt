@@ -33,6 +33,9 @@ func (c *Client) Channel(chnnelID string) (*ies.MediaEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(response.Items) == 0 {
+		return nil, errors.New("no channel found")
+	}
 	item := response.Items[0]
 	ret := &ies.MediaEntry{
 		URL:       "https://www.youtube.com/channel/" + chnnelID,
@@ -62,6 +65,9 @@ func (c *Client) PlaylistsVideoCount(playlistID string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	if len(response.Items) == 0 {
+		return 0, errors.New("no playlist contentDetails found")
+	}
 	return response.Items[0].ContentDetails.ItemCount, nil
 }
 
@@ -72,6 +78,9 @@ func (c *Client) Playlist(playlistID string) (*ies.MediaEntry, error) {
 	response, err := call.Do()
 	if err != nil {
 		return nil, err
+	}
+	if len(response.Items) == 0 {
+		return nil, errors.New("no playlist found")
 	}
 	item := response.Items[0]
 	ret := &ies.MediaEntry{
