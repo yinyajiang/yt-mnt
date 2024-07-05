@@ -79,9 +79,10 @@ func (i *InstagramIE) ExtractPage(rootToken *ies.RootToken, nextPage *ies.NextPa
 	return i.client.UserPostWithPageID(rootToken.MediaID, nextPage)
 }
 
-func (i *InstagramIE) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*ies.MediaEntry, error) {
+// mustHasItem 调试接口，无论是否时间满足都会返回数据
+func (i *InstagramIE) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time, mustHasItem ...bool) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItemsByTime(paretnMediaID,
 		func(mediaID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 			return i.client.UserPostWithPageID(mediaID, nextPage)
-		}, afterTime)
+		}, afterTime, mustHasItem...)
 }

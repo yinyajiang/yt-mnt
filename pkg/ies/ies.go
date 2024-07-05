@@ -25,7 +25,7 @@ type InfoExtractor interface {
 	ParseRoot(link string, options ...ParseOptions) (*MediaEntry, *RootToken, error)
 	ConvertToUserRoot(rootToken *RootToken, rootInfo *MediaEntry) error
 	ExtractPage(rootToken *RootToken, nextPage *NextPageToken) ([]*MediaEntry, error)
-	ExtractAllAfterTime(parentMediaID string, afterTime time.Time) ([]*MediaEntry, error)
+	ExtractAllAfterTime(parentMediaID string, afterTime time.Time, mustHasItem ...bool) ([]*MediaEntry, error)
 	IsMatched(link string) bool
 	Name() string
 	Init() error

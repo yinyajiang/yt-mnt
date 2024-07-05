@@ -116,9 +116,9 @@ func (y *YoutubeIE) ExtractPage(root *ies.RootToken, nextPage *ies.NextPageToken
 	return nil, errors.New("unsupported media type")
 }
 
-func (y *YoutubeIE) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time) ([]*ies.MediaEntry, error) {
+func (y *YoutubeIE) ExtractAllAfterTime(paretnMediaID string, afterTime time.Time, mustHasItem ...bool) ([]*ies.MediaEntry, error) {
 	return ies.HelperGetSubItemsByTime(paretnMediaID,
 		func(mediaID string, nextPage *ies.NextPageToken) ([]*ies.MediaEntry, error) {
 			return y.client.PlaylistsVideoWithPage(mediaID, nextPage)
-		}, afterTime)
+		}, afterTime, mustHasItem...)
 }

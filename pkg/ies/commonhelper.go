@@ -12,7 +12,8 @@ type GetSubItemCount = func(parentID string) (int64, error)
 type GetSubItemsOrderWithPage = func(parentID string, nextPage *NextPageToken) ([]*MediaEntry, error)
 type GetSubItemsWithPage = func(parentID string, nextPage *NextPageToken) ([]*MediaEntry, error)
 
-func HelperGetSubItemsByTime(parentID string, getSubItemsWithPageID GetSubItemsOrderWithPage, afterTime time.Time) (retItems []*MediaEntry, err error) {
+// mustHasItem 调试接口，无论是否时间满足都会返回数据
+func HelperGetSubItemsByTime(parentID string, getSubItemsWithPageID GetSubItemsOrderWithPage, afterTime time.Time, mustHasItem ...bool) (retItems []*MediaEntry, err error) {
 	retItems = make([]*MediaEntry, 0)
 	if afterTime.IsZero() {
 		retItems, err = HelperGetSubItems(parentID, getSubItemsWithPageID)
@@ -36,6 +37,12 @@ func HelperGetSubItemsByTime(parentID string, getSubItemsWithPageID GetSubItemsO
 			}
 			for _, item := range pageItems {
 				if item.UploadDate.Before(afterTime) {
+
+					//调试作用
+					if len(mustHasItem) > 0 && mustHasItem[0] && len(retItems) == 0 {
+						retItems = append(retItems, pageItems...)
+					}
+
 					break pageloop
 				}
 				retItems = append(retItems, item)

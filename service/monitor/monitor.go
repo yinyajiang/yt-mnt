@@ -173,7 +173,8 @@ func (m *Monitor) SubscriptionID(url string) (id uint, ok bool) {
 	return 0, false
 }
 
-func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Asset, err error) {
+// mustHasItem 调试接口，无论是否时间满足都会返回数据
+func (m *Monitor) UpdateFeed(feedid uint, dir, quality string, mustHasItem ...bool) (newAssets []*Asset, err error) {
 	var feed Bundle
 	err = m._db.First(&feed, &Bundle{
 		Model: gorm.Model{
@@ -193,7 +194,7 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string) (newAssets []*Ass
 		return
 	}
 
-	newEntries, err := ie.ExtractAllAfterTime(feed.MediaID, feed.LastUpdate)
+	newEntries, err := ie.ExtractAllAfterTime(feed.MediaID, feed.LastUpdate, mustHasItem...)
 	if err != nil {
 		return
 	}

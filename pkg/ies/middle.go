@@ -58,8 +58,8 @@ func (m *middleInfoExtractor) ExtractPage(root *RootToken, nextPage *NextPageTok
 	return entrys, err
 }
 
-func (m *middleInfoExtractor) ExtractAllAfterTime(parentMediaID string, afterTime time.Time) ([]*MediaEntry, error) {
-	entrys, err := m.ie.ExtractAllAfterTime(parentMediaID, afterTime)
+func (m *middleInfoExtractor) ExtractAllAfterTime(parentMediaID string, afterTime time.Time, mustHasItem ...bool) ([]*MediaEntry, error) {
+	entrys, err := m.ie.ExtractAllAfterTime(parentMediaID, afterTime, mustHasItem...)
 	if err == nil {
 		for _, entry := range entrys {
 			sortEntryFormats(entry)
