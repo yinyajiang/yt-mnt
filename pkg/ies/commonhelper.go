@@ -35,17 +35,37 @@ func HelperGetSubItemsByTime(parentID string, getSubItemsWithPageID GetSubItemsO
 				}
 				break pageloop
 			}
-			for _, item := range pageItems {
-				if item.UploadDate.Before(afterTime) {
 
-					//调试作用
-					if len(mustHasItem) > 0 && mustHasItem[0] && len(retItems) == 0 {
-						retItems = append(retItems, pageItems...)
-					}
-
-					break pageloop
+			//需要先判断一下数据的顺序是否满足新->旧
+			dateOrder := true
+			for i := 1; i < len(pageItems); i++ {
+				if pageItems[i].UploadDate.After(pageItems[i-1].UploadDate) {
+					log.Printf("pageItems order is not new->old, break")
+					dateOrder = false
+					break
 				}
-				retItems = append(retItems, item)
+			}
+
+			if dateOrder {
+				for _, item := range pageItems {
+					if item.UploadDate.Before(afterTime) {
+						log.Printf("<%s> upload time %s is before %s, break", item.Title, item.UploadDate.Local(), afterTime.Local())
+
+						//调试作用
+						if len(mustHasItem) > 0 && mustHasItem[0] && len(retItems) == 0 {
+							retItems = append(retItems, pageItems...)
+						}
+
+						break pageloop
+					}
+					retItems = append(retItems, item)
+				}
+			} else {
+				for _, item := range pageItems {
+					if item.UploadDate.After(afterTime) {
+						retItems = append(retItems, item)
+					}
+				}
 			}
 		}
 	}
