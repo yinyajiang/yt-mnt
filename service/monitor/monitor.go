@@ -201,6 +201,7 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string, mustHasItem ...bo
 	if len(newEntries) == 0 {
 		return
 	}
+
 	newAssets, err = m.saveAssets(feed.IE, "", newEntries, &feed, dir, quality)
 	if err != nil {
 		return
@@ -1051,7 +1052,7 @@ func (m *Monitor) saveAssets(ie, downerName string, entryies []*ies.MediaEntry, 
 		var audioFormat *ies.Format
 		if downer.IsNeedFormat() {
 			if len(entry.Formats) == 0 {
-				err = fmt.Errorf("no format found for entry: %s", entry.URL)
+				err = fmt.Errorf("no format found for entry: %s, but downloader(%s) need format", entry.URL, downer.Name())
 				continue
 			}
 			qualityFormat = entry.Formats[selectQualityFormatByResolution(entry.Formats, quality)]
