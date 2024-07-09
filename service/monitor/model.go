@@ -109,9 +109,6 @@ type Bundle struct {
 
 	UserData string
 
-	UnparseCode int
-	UnparseMsg  string
-
 	_tabname string
 }
 

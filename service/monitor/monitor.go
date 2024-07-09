@@ -661,7 +661,7 @@ func (m *Monitor) AddExternalGenericBundle(usedDowner string, bundle *ies.MediaE
 	return bundles[0], nil
 }
 
-func (m *Monitor) AddUnparseBundle(url string, feedType int, unparseCode int, unparseMsg string) (*Bundle, error) {
+func (m *Monitor) AddUnparseBundle(url string, feedType int, userData string) (*Bundle, error) {
 	saveBundleType := BundleTypeGeneric
 	if feedType == FeedTypeUser || feedType == FeedTypePlaylist {
 		saveBundleType = BundleTypeFeed
@@ -672,8 +672,7 @@ func (m *Monitor) AddUnparseBundle(url string, feedType int, unparseCode int, un
 			b.FeedType = feedType
 		}
 		b.SetFlag(BundleFlagUnparse)
-		b.UnparseCode = unparseCode
-		b.UnparseMsg = unparseMsg
+		b.UserData = userData
 		return "", true
 	}, []*ies.MediaEntry{{}}, saveBundleType, "", "", false)
 	if err != nil {
