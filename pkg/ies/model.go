@@ -43,6 +43,7 @@ type MediaEntry struct {
 	Duration    int64
 	UploadDate  time.Time
 	Uploader    string
+	Channel     string
 	Email       string
 	Formats     []*Format
 	EntryCount  int64

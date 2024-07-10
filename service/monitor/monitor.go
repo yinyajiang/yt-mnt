@@ -595,6 +595,13 @@ func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry,
 	return feed, err
 }
 
+func (m *Monitor) GenSubscribeURL(entry *ies.MediaEntry, feedType int) (subscribeURL string, err error) {
+	if feedType == FeedTypeUser && instagram.IsInstragramURL(entry.URL) && entry.Channel != "" {
+		return instagram.GenInstagramURL(entry.Channel)
+	}
+	return m.Convert2SubscribeURL(entry.URL, feedType)
+}
+
 func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeURL string, err error) {
 	if feedType <= 0 {
 		return hintURL, nil
