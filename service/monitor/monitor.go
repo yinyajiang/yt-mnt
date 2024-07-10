@@ -38,10 +38,8 @@ type Monitor struct {
 	downloading                        map[uint]*downloadingStat
 	externalDownloadingStatManagerFunc ExternalDownloadingStatManagerFunc
 
-	_lastBundle           Bundle
-	_lastBundleDirty      bool
-	_lastBundlePreload    bool
-	_lastBundleAssetCount bool
+	_lastBundle      Bundle
+	_lastBundleDirty bool
 }
 
 type MonitorOption struct {
@@ -202,7 +200,7 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string, mustHasItem ...bo
 		return
 	}
 
-	newAssets, err = m.saveAssets(feed.IE, "", newEntries, &feed, dir, quality)
+	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, dir, quality)
 	if err != nil {
 		return
 	}
@@ -559,12 +557,13 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer, reUseID ...uint) ([]*Bun
 		return existBundles, err
 	}
 
-	result, err := m.saveBundles(explorer.ie.Name(), func(b *Bundle) (downer string, isCreate bool) {
+	result, err := m.saveBundles(explorer.ie.Name(), func(b *Bundle) (isCreate bool) {
 		if len(reUseID) > 0 && reUseID[0] > 0 {
 			b.ID = reUseID[0]
-			return "", false
+			b.UnSetFlag(BundleFlagUnparse)
+			return false
 		}
-		return "", true
+		return true
 	}, saveBundles, BundleTypeFeed, "", "", false)
 	if err != nil {
 		return nil, err
@@ -591,7 +590,7 @@ func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry,
 	feed := feeds[0]
 	if len(entries) != 0 {
 		var assets []*Asset
-		assets, err = m.saveAssets(feed.IE, "", entries, feed, dir, quality)
+		assets, err = m.saveAssets(feed.IE, entries, feed, dir, quality)
 		feed.AssetCount = int64(len(assets))
 	}
 	return feed, err
@@ -644,16 +643,14 @@ func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeU
 	return
 }
 
-func (m *Monitor) AddExternalGenericBundle(usedDowner string, bundle *ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
-	if usedDowner == "" {
-		return nil, fmt.Errorf("downloader not specified")
-	}
-	bundles, err := m.saveBundles("external", func(b *Bundle) (string, bool) {
+func (m *Monitor) AddExternalGenericBundle(bundle *ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
+	bundles, err := m.saveBundles("external", func(b *Bundle) bool {
 		if len(reUseID) > 0 && reUseID[0] > 0 {
 			b.ID = reUseID[0]
-			return usedDowner, false
+			b.UnSetFlag(BundleFlagUnparse)
+			return false
 		}
-		return usedDowner, true
+		return true
 	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, dir, quality, false)
 	if err != nil {
 		return nil, err
@@ -666,14 +663,14 @@ func (m *Monitor) AddUnparseBundle(url string, feedType int, userData string) (*
 	if feedType == FeedTypeUser || feedType == FeedTypePlaylist {
 		saveBundleType = BundleTypeFeed
 	}
-	feeds, err := m.saveBundles("", func(b *Bundle) (downer string, isCreate bool) {
+	feeds, err := m.saveBundles("", func(b *Bundle) (isCreate bool) {
 		b.URL = url
 		if saveBundleType == BundleTypeFeed {
 			b.FeedType = feedType
 		}
 		b.SetFlag(BundleFlagUnparse)
 		b.UserData = userData
-		return "", true
+		return true
 	}, []*ies.MediaEntry{{}}, saveBundleType, "", "", false)
 	if err != nil {
 		return nil, err
@@ -704,11 +701,11 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, preProcBundle func(*Bun
 	if err != nil {
 		return nil, err
 	}
-	return m.saveBundles(explorer.ie.Name(), func(b *Bundle) (downer string, isCreate bool) {
+	return m.saveBundles(explorer.ie.Name(), func(b *Bundle) (isCreate bool) {
 		if preProcBundle != nil {
 			preProcBundle(b)
 		}
-		return "", true
+		return true
 	}, bundles, BundleTypeGeneric, dir, quality, false)
 }
 
@@ -971,7 +968,7 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer string, isCreate bool), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate bool), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
 	bundles = make([]*Bundle, 0)
 	for _, entry := range bundleMedias {
 		if m.storage.IsClosed() {
@@ -990,10 +987,10 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer s
 			LastUpdate: time.Now(),
 			Uploader:   entry.Uploader,
 		}
-		downerName := ""
+
 		isCreate := true
 		if preSaveBundle != nil {
-			downerName, isCreate = preSaveBundle(bundle)
+			isCreate = preSaveBundle(bundle)
 		}
 
 		if bundle.BundleType == BundleTypeFeed && bundle.FeedType == 0 {
@@ -1011,7 +1008,7 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer s
 			continue
 		}
 		if saveFeedBundleAssets || saveBundleType != BundleTypeFeed {
-			assets, err := m.saveAssets(ie, downerName, entry.Entries, bundle, dir, quality)
+			assets, err := m.saveAssets(ie, entry.Entries, bundle, dir, quality)
 			if err == nil {
 				bundle.Assets = assets
 				bundle.AssetCount = int64(len(assets))
@@ -1025,18 +1022,18 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (downer s
 	return bundles, err
 }
 
-func (m *Monitor) saveAssets(ie, downerName string, entryies []*ies.MediaEntry, owner *Bundle, dir, quality string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, dir, quality string) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 
 	var downer downloader.Downloader
-	if downerName != "" {
-		downer = downloader.GetByName(downerName)
-	}
-	if downer == nil {
-		downer = downloader.GetByIE(ie)
-	}
-
+	// var downerName string
+	// if downerName != "" {
+	// 	downer = downloader.GetByName(downerName)
+	// }
+	//if downer == nil {
+	downer = downloader.GetByIE(ie)
+	//}
 	if quality == "" {
 		quality = "best"
 	}

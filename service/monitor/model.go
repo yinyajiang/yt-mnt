@@ -122,7 +122,8 @@ func (f *Bundle) TableName() string {
 func (f *Bundle) SetFlag(flag int64) {
 	f.setFlags(flag, true)
 }
-func (f *Bundle) ClearFlag(flag int64) {
+
+func (f *Bundle) UnSetFlag(flag int64) {
 	f.setFlags(flag, false)
 }
 
