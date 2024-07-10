@@ -560,7 +560,6 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer, reUseID ...uint) ([]*Bun
 	result, err := m.saveBundles(explorer.ie.Name(), func(b *Bundle) (isCreate bool) {
 		if len(reUseID) > 0 && reUseID[0] > 0 {
 			b.ID = reUseID[0]
-			b.UnSetFlag(BundleFlagUnparse)
 			return false
 		}
 		return true
@@ -647,7 +646,6 @@ func (m *Monitor) AddExternalGenericBundle(bundle *ies.MediaEntry, dir, quality 
 	bundles, err := m.saveBundles("external", func(b *Bundle) bool {
 		if len(reUseID) > 0 && reUseID[0] > 0 {
 			b.ID = reUseID[0]
-			b.UnSetFlag(BundleFlagUnparse)
 			return false
 		}
 		return true
