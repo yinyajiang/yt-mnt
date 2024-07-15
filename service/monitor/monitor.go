@@ -650,7 +650,7 @@ func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeU
 }
 
 func (m *Monitor) AddExternalGenericBundle(bundle *ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
-	bundles, err := m.saveBundles("external", func(b *Bundle) bool {
+	bundles, err := m.saveBundles("", func(b *Bundle) bool {
 		if len(reUseID) > 0 && reUseID[0] > 0 {
 			b.ID = reUseID[0]
 			return false
@@ -974,6 +974,18 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 }
 
 func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate bool), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
+	if len(bundleMedias) == 0 {
+		return nil, fmt.Errorf("bundleMedias is empty")
+	}
+
+	if ie == "" {
+		if instagram.IsInstragramURL(bundleMedias[0].URL) {
+			ie = instagram.Name()
+		} else if youtube.IsYoutubeURL(bundleMedias[0].URL) {
+			ie = youtube.Name()
+		}
+	}
+
 	bundles = make([]*Bundle, 0)
 	for _, entry := range bundleMedias {
 		if m.storage.IsClosed() {
@@ -1031,14 +1043,7 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 
-	var downer downloader.Downloader
-	// var downerName string
-	// if downerName != "" {
-	// 	downer = downloader.GetByName(downerName)
-	// }
-	//if downer == nil {
-	downer = downloader.GetByIE(ie)
-	//}
+	downer := downloader.GetByIE(ie)
 	if quality == "" {
 		quality = "best"
 	}
