@@ -33,9 +33,9 @@ type Explorer struct {
 	selectedTypes []selectedType
 	isPlain       bool
 
-	_time       time.Time
-	_uuid       string
-	_itemCaches pageItemCaches
+	_time   time.Time
+	_uuid   string
+	_cacher pageItemCaches
 
 	userData      map[string]any
 	exploredCount int
@@ -54,7 +54,7 @@ func newExplorer() *Explorer {
 	explorer._time = time.Now()
 	explorer._uuid = uuid.New().String()
 	explorer.userData = make(map[string]any)
-	explorer._itemCaches = pageItemCaches{
+	explorer._cacher = pageItemCaches{
 		explorer: &explorer,
 	}
 	return &explorer
@@ -87,7 +87,7 @@ func (e *Explorer) IsValid() bool {
 }
 
 func (e *Explorer) IsEnd() bool {
-	return e._itemCaches.isCacheEmpty() && e.loadIsEnd()
+	return e._cacher.isCacheEmpty() && e.loadIsEnd()
 }
 
 func (e *Explorer) IsSelectOne() bool {
@@ -146,13 +146,13 @@ func (e *Explorer) PageCount() int {
 }
 
 func (e *Explorer) ExploreAll() ([]*ies.MediaEntry, error) {
-	ret, err := e._itemCaches.exploreAll()
+	ret, err := e._cacher.exploreAll()
 	e.exploredCount = len(ret)
 	return ret, err
 }
 
 func (e *Explorer) ExploreNextAll() ([]*ies.MediaEntry, error) {
-	ret, err := e._itemCaches.exploreNextAll()
+	ret, err := e._cacher.exploreNextAll()
 	e.exploredCount += len(ret)
 	return ret, err
 }
@@ -162,7 +162,7 @@ func (e *Explorer) ExploreNext(max_ ...int) ([]*ies.MediaEntry, error) {
 	if len(max_) > 0 {
 		max = max_[0]
 	}
-	ret, err := e._itemCaches.exploreNext(max)
+	ret, err := e._cacher.exploreNext(max)
 	e.exploredCount += len(ret)
 	return ret, err
 }
@@ -416,15 +416,20 @@ func (p *pageItemCaches) exploreNext(max int) ([]*ies.MediaEntry, error) {
 	if len(p._cacheItems) >= max {
 		return p.pop(max), nil
 	}
-	pages, err := p.explorer.loadNextPage()
-	if err != nil {
-		if len(p._cacheItems) != 0 {
-			return p.pop(max), nil
+
+	var err error
+	for len(p._cacheItems) < max && !p.explorer.loadIsEnd() {
+		var pages []*ies.MediaEntry
+		pages, err = p.explorer.loadNextPage()
+		if err != nil {
+			break
 		}
-		return nil, err
+		p.append(pages)
 	}
-	p.append(pages)
-	return p.pop(max), nil
+	if len(p._cacheItems) != 0 {
+		err = nil
+	}
+	return p.pop(max), err
 }
 
 func (p *pageItemCaches) append(pages []*ies.MediaEntry) {
