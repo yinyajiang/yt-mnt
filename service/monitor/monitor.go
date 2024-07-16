@@ -1018,6 +1018,8 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate
 		if isCreate {
 			err = m.storage.Create(bundle)
 		} else {
+			//复用id时，create时间为0
+			bundle.CreatedAt = time.Now()
 			err = m.storage.Save(bundle)
 		}
 
