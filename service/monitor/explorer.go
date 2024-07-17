@@ -514,6 +514,31 @@ func (c *ExplorerCaches) Size() int {
 	return len(c.explorersMap)
 }
 
+func (c *ExplorerCaches) Pop() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if len(c.explorersMap) == 0 {
+		return
+	}
+	if len(c.explorersMap) == 1 {
+		c.Clear()
+		return
+	}
+
+	type kvPair struct {
+		key      string
+		explorer *Explorer
+	}
+	pairs := make([]kvPair, 0)
+	for key, explorer := range c.explorersMap {
+		pairs = append(pairs, kvPair{key, explorer})
+	}
+	slice.SortBy(pairs, func(a, b kvPair) bool {
+		return a.explorer.CreateTime().Before(b.explorer.CreateTime())
+	})
+	c.Delete(pairs[0].key)
+}
+
 func (c *ExplorerCaches) Delete(handle string) {
 	if handle == "" {
 		return
