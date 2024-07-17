@@ -508,6 +508,12 @@ func (c *ExplorerCaches) IsContain(handle string) bool {
 	return ok
 }
 
+func (c *ExplorerCaches) Size() int {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return len(c.explorersMap)
+}
+
 func (c *ExplorerCaches) Delete(handle string) {
 	if handle == "" {
 		return
