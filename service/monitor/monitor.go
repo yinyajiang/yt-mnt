@@ -850,7 +850,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 	asset.Status = AssetStatusDownloading
 	ok, err := d.Download(ctx, downloader.DownloadOptions{
 		URL:                 asset.URL,
-		Quality:             asset.Quality,
+		Quality:             &asset.Quality,
 		DownloadedSize:      asset.DownloadedSize,
 		DownloadPercent:     asset.DownloadPercent,
 		DownloadFileDir:     asset.DownloadFileDir,

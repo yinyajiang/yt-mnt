@@ -34,8 +34,8 @@ type Downloader interface {
 }
 
 type DownloadOptions struct {
-	URL                 string
-	Quality             string
+	URL string
+
 	MainDownloadFormat  ies.Format
 	AudioDownloadFormat ies.Format
 	DownloadedSize      int64
@@ -46,6 +46,7 @@ type DownloadOptions struct {
 	DownloadFileStem *string
 	DownloadFileExt  *string
 	DownloaderData   *string
+	Quality          *string
 
 	RefillInfo
 }
