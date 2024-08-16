@@ -3,6 +3,9 @@ package ytbapi
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 
 	"github.com/yinyajiang/yt-mnt/pkg/ies"
 
@@ -14,8 +17,34 @@ type Client struct {
 	service *youtube.Service
 }
 
+var _proxy string
+
+func SetProxy(proxy string) {
+	_proxy = proxy
+}
+
 func New(apiKey string) (*Client, error) {
-	service, err := youtube.NewService(context.Background(), option.WithAPIKey(apiKey))
+
+	opts := []option.ClientOption{
+		option.WithAPIKey(apiKey),
+	}
+
+	if _proxy != "" {
+		proxy_, err := url.Parse(_proxy)
+		if err == nil {
+			fmt.Println("Using proxy: ", _proxy)
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					Proxy: http.ProxyURL(proxy_),
+				},
+			}
+			opts = append(opts, option.WithHTTPClient(httpClient))
+		} else {
+			fmt.Println("Invalid proxy URL: ", _proxy)
+		}
+	}
+
+	service, err := youtube.NewService(context.Background(), opts...)
 	if err != nil {
 		return nil, err
 	}
