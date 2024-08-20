@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"time"
@@ -107,9 +108,11 @@ type Bundle struct {
 	AssetFinishedCount int64    `gorm:"-"`
 	Assets             []*Asset `gorm:"foreignKey:BundleID"`
 
-	UserData string
+	UserData   string
+	UserKVData string
 
 	_tabname string
+	_kvdata  map[string]any
 }
 
 func (f *Bundle) TableName() string {
@@ -125,6 +128,73 @@ func (f *Bundle) SetFlag(flag int64) {
 
 func (f *Bundle) UnSetFlag(flag int64) {
 	f.setFlags(flag, false)
+}
+
+func (f *Bundle) SetKVData(kv map[string]any) {
+	f._kvdata = kv
+	if len(f._kvdata) != 0 {
+		by, _ := json.Marshal(f._kvdata)
+		if len(by) != 0 {
+			f.UserKVData = string(by)
+		}
+	} else {
+		f.UserKVData = ""
+	}
+}
+
+func (f *Bundle) AddKVData(key string, value any) {
+	if f._kvdata == nil {
+		f.GetKVData("")
+	}
+	if key == "" {
+		return
+	}
+	f._kvdata[key] = value
+	f.SetKVData(f._kvdata)
+}
+
+func (f *Bundle) GetKVData(key string) (any, bool) {
+	if f._kvdata == nil {
+		if f.UserKVData != "" {
+			json.Unmarshal([]byte(f.UserKVData), &f._kvdata)
+		}
+		if f._kvdata == nil {
+			f._kvdata = make(map[string]any, 0)
+		}
+	}
+	if key == "" {
+		return nil, false
+	}
+	v, ok := f._kvdata[key]
+	return v, ok
+}
+
+func (f *Bundle) GetKVDataInt(key string, def int) int {
+	v, ok := f.GetKVData(key)
+	if !ok || v == nil {
+		return def
+	}
+	switch v := v.(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	case int64:
+		return int(v)
+	}
+	return def
+}
+
+func (f *Bundle) GetKVDataString(key string) string {
+	v, ok := f.GetKVData(key)
+	if !ok || v == nil {
+		return ""
+	}
+	switch v := v.(type) {
+	case string:
+		return v
+	}
+	return ""
 }
 
 func (f *Bundle) setFlags(flag int64, set bool) {
