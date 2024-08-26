@@ -521,7 +521,7 @@ func (c *ExplorerCaches) Pop() {
 		return
 	}
 	if len(c.explorersMap) == 1 {
-		c.Clear()
+		c.Clear(true)
 		return
 	}
 
@@ -536,21 +536,25 @@ func (c *ExplorerCaches) Pop() {
 	slice.SortBy(pairs, func(a, b kvPair) bool {
 		return a.explorer.CreateTime().Before(b.explorer.CreateTime())
 	})
-	c.Delete(pairs[0].key)
+	c.Delete(pairs[0].key, true)
 }
 
-func (c *ExplorerCaches) Delete(handle string) {
+func (c *ExplorerCaches) Delete(handle string, notlock ...bool) {
 	if handle == "" {
 		return
 	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	if len(notlock) == 0 || (len(notlock) > 0 && !notlock[0]) {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+	}
 	delete(c.explorersMap, handle)
 }
 
-func (c *ExplorerCaches) Clear() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (c *ExplorerCaches) Clear(notlock ...bool) {
+	if len(notlock) == 0 || (len(notlock) > 0 && !notlock[0]) {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+	}
 	c.explorersMap = map[string]*Explorer{}
 }
 
