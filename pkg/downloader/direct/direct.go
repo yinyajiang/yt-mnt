@@ -93,7 +93,12 @@ func (d *DirectDownloader) Download(ctx context.Context, opt downloader.Download
 	if err != nil {
 		return ok, err
 	}
-	return ok, common.MergeAV(ctx, vPath, aPath, opt.FilePath())
+	err = common.MergeAV(ctx, vPath, aPath, opt.FilePath())
+	if err == nil {
+		os.Remove(vPath)
+		os.Remove(aPath)
+	}
+	return ok, err
 }
 
 func (d *DirectDownloader) SupportedIE() []string {
