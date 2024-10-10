@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -1064,6 +1065,7 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 	if opt.Quality == "" {
 		opt.Quality = "best"
 	}
+	opt.Quality = strings.ToLower(opt.Quality)
 
 	lastBeginStem := ""
 	stemSuffIndex := 1
