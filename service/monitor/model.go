@@ -35,8 +35,12 @@ type Asset struct {
 	Title     string
 	Thumbnail string
 
-	URL           string
-	Quality       string
+	URL                 string
+	Quality             string
+	Subtitle            string
+	IsDownloadThumbnail bool
+	IsOriginalSubtitle  bool
+
 	Duration      int64
 	QualityFormat *ies.Format `gorm:"type:json"`
 	AudioFormat   *ies.Format `gorm:"type:json"`

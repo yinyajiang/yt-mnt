@@ -171,8 +171,16 @@ func (m *Monitor) SubscriptionID(url string) (id uint, ok bool) {
 	return 0, false
 }
 
+type AssetDownloadOption struct {
+	Subtitle            string
+	IsDownloadThumbnail bool
+	IsOriginalSubtitle  bool
+	Dir                 string
+	Quality             string
+}
+
 // mustHasItem 调试接口，无论是否时间满足都会返回数据
-func (m *Monitor) UpdateFeed(feedid uint, dir, quality string, mustHasItem ...bool) (newAssets []*Asset, err error) {
+func (m *Monitor) UpdateFeed(feedid uint, opt AssetDownloadOption, mustHasItem ...bool) (newAssets []*Asset, err error) {
 	var feed Bundle
 	err = m._db.First(&feed, &Bundle{
 		Model: gorm.Model{
@@ -200,7 +208,7 @@ func (m *Monitor) UpdateFeed(feedid uint, dir, quality string, mustHasItem ...bo
 		return
 	}
 
-	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, dir, quality)
+	newAssets, err = m.saveAssets(feed.IE, newEntries, &feed, opt)
 	if err != nil {
 		return
 	}
@@ -563,7 +571,7 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer, reUseID ...uint) ([]*Bun
 			return false
 		}
 		return true
-	}, saveBundles, BundleTypeFeed, "", "", false)
+	}, saveBundles, BundleTypeFeed, AssetDownloadOption{}, false)
 	if err != nil {
 		return nil, err
 	}
@@ -571,7 +579,7 @@ func (m *Monitor) SubscribeSelected(explorer *Explorer, reUseID ...uint) ([]*Bun
 	return result, nil
 }
 
-func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
+func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry, opt AssetDownloadOption, reUseID ...uint) (*Bundle, error) {
 	if _, ok := m.SubscriptionID(url); ok {
 		return nil, fmt.Errorf("feed already exists")
 	}
@@ -589,7 +597,7 @@ func (m *Monitor) SubscribeURLAndAddAsset(url string, entries []*ies.MediaEntry,
 	feed := feeds[0]
 	if len(entries) != 0 {
 		var assets []*Asset
-		assets, err = m.saveAssets(feed.IE, entries, feed, dir, quality)
+		assets, err = m.saveAssets(feed.IE, entries, feed, opt)
 		feed.AssetCount = int64(len(assets))
 	}
 	return feed, err
@@ -652,21 +660,21 @@ func (m *Monitor) Convert2SubscribeURL(hintURL string, feedType int) (subscribeU
 	return
 }
 
-func (m *Monitor) AddExternalGenericBundle(bundle *ies.MediaEntry, dir, quality string, reUseID ...uint) (*Bundle, error) {
+func (m *Monitor) AddExternalGenericBundle(bundle *ies.MediaEntry, opt AssetDownloadOption, reUseID ...uint) (*Bundle, error) {
 	bundles, err := m.saveBundles("", func(b *Bundle) bool {
 		if len(reUseID) > 0 && reUseID[0] > 0 {
 			b.ID = reUseID[0]
 			return false
 		}
 		return true
-	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, dir, quality, false)
+	}, []*ies.MediaEntry{bundle}, BundleTypeGeneric, opt, false)
 	if err != nil {
 		return nil, err
 	}
 	return bundles[0], nil
 }
 
-func (m *Monitor) AddUnparseBundle(url string, feedType int, userKVData map[string]any) (*Bundle, error) {
+func (m *Monitor) AddUnparseBundle(url string, feedType int, opt AssetDownloadOption, userKVData map[string]any) (*Bundle, error) {
 	saveBundleType := BundleTypeGeneric
 	if feedType == FeedTypeUser || feedType == FeedTypePlaylist {
 		saveBundleType = BundleTypeFeed
@@ -679,25 +687,25 @@ func (m *Monitor) AddUnparseBundle(url string, feedType int, userKVData map[stri
 		b.SetFlag(BundleFlagUnparse)
 		b.SetKVData(userKVData)
 		return true
-	}, []*ies.MediaEntry{{}}, saveBundleType, "", "", false)
+	}, []*ies.MediaEntry{{}}, saveBundleType, opt, false)
 	if err != nil {
 		return nil, err
 	}
 	return feeds[0], nil
 }
 
-func (m *Monitor) AddExternalFeedBundle(feedIE string, bundle *ies.MediaEntry, dir, quality string, saveFeedBundleAssets bool) (*Bundle, error) {
+func (m *Monitor) AddExternalFeedBundle(feedIE string, bundle *ies.MediaEntry, opt AssetDownloadOption, saveFeedBundleAssets bool) (*Bundle, error) {
 	if feedIE == "" {
 		return nil, fmt.Errorf("feedIE not specified")
 	}
-	bundles, err := m.saveBundles(feedIE, nil, []*ies.MediaEntry{bundle}, BundleTypeFeed, dir, quality, saveFeedBundleAssets)
+	bundles, err := m.saveBundles(feedIE, nil, []*ies.MediaEntry{bundle}, BundleTypeFeed, opt, saveFeedBundleAssets)
 	if err != nil {
 		return nil, err
 	}
 	return bundles[0], nil
 }
 
-func (m *Monitor) AssetbasedSelected(explorer *Explorer, preProcBundle func(*Bundle), dir, quality string) ([]*Bundle, error) {
+func (m *Monitor) AssetbasedSelected(explorer *Explorer, preProcBundle func(*Bundle), opt AssetDownloadOption) ([]*Bundle, error) {
 	switch explorer.RootMediaType() {
 	case ies.MediaTypeUser:
 		if explorer.firstSelectedIndex() == IndexUser {
@@ -714,7 +722,7 @@ func (m *Monitor) AssetbasedSelected(explorer *Explorer, preProcBundle func(*Bun
 			preProcBundle(b)
 		}
 		return true
-	}, bundles, BundleTypeGeneric, dir, quality, false)
+	}, bundles, BundleTypeGeneric, opt, false)
 }
 
 func (m *Monitor) StopDownloading(id uint, wait bool) {
@@ -976,7 +984,7 @@ func (m *Monitor) bundleMediaEntryDeepAnalysis(url string) []*ies.MediaEntry {
 	return ret
 }
 
-func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate bool), bundleMedias []*ies.MediaEntry, saveBundleType int, dir, quality string, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
+func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate bool), bundleMedias []*ies.MediaEntry, saveBundleType int, opt AssetDownloadOption, saveFeedBundleAssets bool) (bundles []*Bundle, err error) {
 	if len(bundleMedias) == 0 {
 		return nil, fmt.Errorf("bundleMedias is empty")
 	}
@@ -1030,7 +1038,7 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate
 			continue
 		}
 		if saveFeedBundleAssets || saveBundleType != BundleTypeFeed {
-			assets, err := m.saveAssets(ie, entry.Entries, bundle, dir, quality)
+			assets, err := m.saveAssets(ie, entry.Entries, bundle, opt)
 			if err == nil {
 				bundle.Assets = assets
 				bundle.AssetCount = int64(len(assets))
@@ -1044,13 +1052,13 @@ func (m *Monitor) saveBundles(ie string, preSaveBundle func(b *Bundle) (isCreate
 	return bundles, err
 }
 
-func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, dir, quality string) (retAssets []*Asset, err error) {
+func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundle, opt AssetDownloadOption) (retAssets []*Asset, err error) {
 	entryies = plain(entryies)
 	retAssets = make([]*Asset, 0, len(entryies))
 
 	downer := downloader.GetByIE(ie)
-	if quality == "" {
-		quality = "best"
+	if opt.Quality == "" {
+		opt.Quality = "best"
 	}
 
 	lastBeginStem := ""
@@ -1068,9 +1076,9 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 				err = fmt.Errorf("no format found for entry: %s, but downloader(%s) need format", entry.URL, downer.Name())
 				continue
 			}
-			qualityFormat = entry.Formats[selectQualityFormatByResolution(entry.Formats, quality)]
+			qualityFormat = entry.Formats[selectQualityFormatByResolution(entry.Formats, opt.Quality)]
 			if ies.MediaTypeVideo == entry.MediaType && qualityFormat.FormatType == ies.FormatTypeVideo {
-				if audioIndex := selectAudioFormatByResolution(entry.Formats, quality); audioIndex >= 0 {
+				if audioIndex := selectAudioFormatByResolution(entry.Formats, opt.Quality); audioIndex >= 0 {
 					audioFormat = entry.Formats[audioIndex]
 				}
 			}
@@ -1078,14 +1086,17 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 		asset := &Asset{
 			Status: AssetStatusNew,
 
-			Title:         entry.Title,
-			URL:           entry.URL,
-			Quality:       quality,
-			Thumbnail:     entry.Thumbnail,
-			QualityFormat: qualityFormat,
-			AudioFormat:   audioFormat,
+			Title:               entry.Title,
+			URL:                 entry.URL,
+			Quality:             opt.Quality,
+			Subtitle:            opt.Subtitle,
+			IsDownloadThumbnail: opt.IsDownloadThumbnail,
+			IsOriginalSubtitle:  opt.IsOriginalSubtitle,
+			Thumbnail:           entry.Thumbnail,
+			QualityFormat:       qualityFormat,
+			AudioFormat:         audioFormat,
 
-			DownloadFileDir: dir,
+			DownloadFileDir: opt.Dir,
 			Downloader:      downer.Name(),
 		}
 		switch entry.MediaType {
