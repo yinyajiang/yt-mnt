@@ -599,6 +599,9 @@ func (m *Monitor) GenSubscribeURL(entry *ies.MediaEntry, feedType int) (subscrib
 	if feedType == FeedTypeUser && instagram.IsInstragramURL(entry.URL) && entry.Channel != "" {
 		return instagram.GenInstagramURL(entry.Channel)
 	}
+	if feedType == FeedTypeUser && youtube.IsYoutubeURL(entry.URL) && entry.Channel != "" {
+		return youtube.GenYoutubeURL(entry.Channel, "", "")
+	}
 	return m.Convert2SubscribeURL(entry.URL, feedType)
 }
 
