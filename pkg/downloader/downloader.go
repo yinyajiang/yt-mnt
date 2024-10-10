@@ -42,6 +42,10 @@ type DownloadOptions struct {
 	DownloadPercent     float64
 	DownloadFileDir     string
 
+	Subtitle            string
+	IsDownloadThumbnail bool
+	IsOriginalSubtitle  bool
+
 	//in out params
 	DownloadFileStem *string
 	DownloadFileExt  *string

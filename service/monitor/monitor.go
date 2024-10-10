@@ -868,6 +868,10 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		MainDownloadFormat:  qualityFormat,
 		AudioDownloadFormat: audioFormat,
 
+		Subtitle:            asset.Subtitle,
+		IsDownloadThumbnail: asset.IsDownloadThumbnail,
+		IsOriginalSubtitle:  asset.IsOriginalSubtitle,
+
 		DownloadFileStem: &asset.DownloadFileStem,
 		DownloadFileExt:  &asset.DownloadFileExt,
 		DownloaderData:   &asset.DownloaderData,
