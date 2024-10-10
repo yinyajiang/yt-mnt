@@ -24,6 +24,16 @@ func ParseResolutionInfo(s string) (ret ResolutionInfo, ok bool) {
 	if s == "" {
 		return
 	}
+	switch strings.ToLower(s) {
+	case "8k":
+		s = "4320p"
+	case "4k":
+		s = "2160p"
+	case "2k":
+		s = "1440p"
+	case "1k":
+		s = "1080p"
+	}
 
 	if matchs := regexpPFPS.FindStringSubmatch(s); len(matchs) >= 2 {
 		// 1080p、1080p60
