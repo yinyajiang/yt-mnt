@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/yinyajiang/yt-mnt/pkg/common"
@@ -70,6 +72,14 @@ func (d *DirectDownloader) Download(ctx context.Context, opt downloader.Download
 	if opt.DownloadFileStem != nil && *opt.DownloadFileStem == "" {
 		opt.SetStem(time.Now().Format("20060102"))
 	}
+
+	// conver to audio
+	opt.HopeMediaType = strings.ToLower(opt.HopeMediaType)
+	convertAudioExt := ""
+	if opt.HopeMediaType != "video" && opt.HopeMediaType != "image" && opt.HopeMediaType != "photo" {
+		convertAudioExt = opt.HopeMediaType
+	}
+
 	ok = true
 	//只下载一个
 	if opt.AudioDownloadFormat.URL == "" {
@@ -97,6 +107,12 @@ func (d *DirectDownloader) Download(ctx context.Context, opt downloader.Download
 	if err == nil {
 		os.Remove(vPath)
 		os.Remove(aPath)
+	}
+
+	//conver audio
+	if convertAudioExt != "" {
+		convertPath := common.ConvertToExt(ctx, opt.FilePath(), convertAudioExt)
+		opt.SetExt(filepath.Ext(convertPath))
 	}
 	return ok, err
 }

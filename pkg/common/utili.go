@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
@@ -42,6 +43,23 @@ func MergeAV(ctx context.Context, v, a, output string) error {
 		return err
 	}
 	return nil
+}
+
+func ConvertToExt(ctx context.Context, input, ext string) string {
+	if strings.ToLower(ext) == "audio" {
+		ext = "mp3"
+	}
+	ext = strings.TrimPrefix(ext, ".")
+
+	before, _, _ := strings.Cut(input, ".")
+	output := filepath.Join(filepath.Dir(input), before+"."+ext)
+	cmd := exec.CommandContext(ctx, LocalExecutableFile("ffmpeg"), "-i", input, output)
+	if err := cmd.Run(); err != nil {
+		fmt.Println(err)
+		return input
+	}
+	os.Remove(input)
+	return output
 }
 
 func ExecutableFile(name string) string {
