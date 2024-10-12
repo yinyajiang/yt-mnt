@@ -45,6 +45,7 @@ type DownloadOptions struct {
 	Subtitle            string
 	IsDownloadThumbnail bool
 	IsOriginalSubtitle  bool
+	HopeMediaType       string
 
 	//in out params
 	DownloadFileStem *string

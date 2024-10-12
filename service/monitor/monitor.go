@@ -178,6 +178,7 @@ type AssetDownloadOption struct {
 	IsOriginalSubtitle  bool
 	Dir                 string
 	Quality             string
+	HopeMediaType       string
 }
 
 // mustHasItem 调试接口，无论是否时间满足都会返回数据
@@ -872,6 +873,7 @@ func (m *Monitor) DownloadAsset(ctx context.Context, id uint, newAssetDir string
 		Subtitle:            asset.Subtitle,
 		IsDownloadThumbnail: asset.IsDownloadThumbnail,
 		IsOriginalSubtitle:  asset.IsOriginalSubtitle,
+		HopeMediaType:       asset.HopeMediaType,
 
 		DownloadFileStem: &asset.DownloadFileStem,
 		DownloadFileExt:  &asset.DownloadFileExt,
@@ -1095,6 +1097,7 @@ func (m *Monitor) saveAssets(ie string, entryies []*ies.MediaEntry, owner *Bundl
 			Title:               entry.Title,
 			URL:                 entry.URL,
 			Quality:             opt.Quality,
+			HopeMediaType:       opt.HopeMediaType,
 			Subtitle:            opt.Subtitle,
 			IsDownloadThumbnail: opt.IsDownloadThumbnail,
 			IsOriginalSubtitle:  opt.IsOriginalSubtitle,

@@ -40,6 +40,7 @@ type Asset struct {
 	Subtitle            string
 	IsDownloadThumbnail bool
 	IsOriginalSubtitle  bool
+	HopeMediaType       string
 
 	Duration      int64
 	QualityFormat *ies.Format `gorm:"type:json"`
