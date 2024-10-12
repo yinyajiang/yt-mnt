@@ -3,6 +3,7 @@ package ies
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,21 @@ const (
 	MediaTypePlaylistGroup
 	MediaTypeUser
 )
+
+func IsMatchedMediaType(entry *MediaEntry, hopeMediaType string) bool {
+	if entry == nil {
+		return false
+	}
+	switch strings.ToLower(hopeMediaType) {
+	case "video":
+		return entry.MediaType == MediaTypeVideo
+	case "audio":
+		return entry.MediaType == MediaTypeAudio
+	case "image", "photo":
+		return entry.MediaType == MediaTypeImage
+	}
+	return true
+}
 
 type MediaEntry struct {
 	MediaType int
