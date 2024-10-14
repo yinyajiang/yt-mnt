@@ -284,45 +284,18 @@ func (m *Monitor) DeleteBundle(id uint, remainFinished bool) {
 		m.StopDownloading(id, true)
 	}
 
-	deleteBundle := true
 	assets := []*Asset{}
-
-	if remainFinished {
-		m._db.Model(&Asset{}).Not(&Asset{
-			Status: AssetStatusFinished,
-		}).Where(&Asset{
-			BundleID: id,
-		}).Find(&assets)
-
-		m._db.Model(&Asset{}).Not(&Asset{
-			Status: AssetStatusFinished,
-		}).Where(&Asset{
-			BundleID: id,
-		}).Unscoped().Delete(&Asset{})
-
-		var count int64
-		m._db.Model(&Asset{}).Where(&Asset{
-			BundleID: id,
-		}).Count(&count)
-		deleteBundle = count == 0
-	} else {
-		m._db.Find(&assets, &Asset{
-			BundleID: id,
-		})
-		m.storage.Delete(&Asset{
-			BundleID: id,
-		})
-		deleteBundle = true
-	}
-
-	if deleteBundle {
-		m.storage.Delete(&Bundle{
-			Model: gorm.Model{
-				ID: id,
-			},
-		})
-	}
-
+	m._db.Find(&assets, &Asset{
+		BundleID: id,
+	})
+	m.storage.Delete(&Asset{
+		BundleID: id,
+	})
+	m.storage.Delete(&Bundle{
+		Model: gorm.Model{
+			ID: id,
+		},
+	})
 	for _, aset := range assets {
 		m.deleteDownloaderItem(aset, remainFinished)
 	}
